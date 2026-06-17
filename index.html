@@ -38,8 +38,8 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 /* Form */
 .form-group{margin-bottom:14px}
 .form-group label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
-.form-group input,.form-group select{width:100%;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:.95rem}
-.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--primary)}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:.95rem}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--primary)}
 
 .set-row{display:grid;grid-template-columns:auto 1fr 1fr 1fr auto;gap:8px;align-items:center;margin-bottom:8px}
 .set-row span{font-size:.85rem;color:var(--muted);text-align:center}
@@ -54,8 +54,11 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .exercise-actions{display:flex;gap:8px;margin-top:8px}
 
 /* FAB */
-.fab{position:fixed;bottom:24px;right:24px;width:56px;height:56px;border-radius:50%;background:var(--primary);color:#fff;border:none;font-size:1.8rem;cursor:pointer;box-shadow:0 4px 16px rgba(108,99,255,.4);display:flex;align-items:center;justify-content:center;z-index:20;transition:transform .15s}
+.fab-group{position:fixed;bottom:24px;right:24px;display:flex;flex-direction:column-reverse;align-items:center;gap:12px;z-index:20}
+.fab{width:56px;height:56px;border-radius:50%;background:var(--primary);color:#fff;border:none;font-size:1.8rem;cursor:pointer;box-shadow:0 4px 16px rgba(108,99,255,.4);display:flex;align-items:center;justify-content:center;transition:transform .15s}
 .fab:hover{transform:scale(1.08)}
+.paste-fab{width:44px;height:44px;border-radius:50%;background:var(--surface);color:var(--primary);border:1px solid var(--border);font-size:1.1rem;cursor:pointer;box-shadow:0 2px 12px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;transition:all .15s}
+.paste-fab:hover{transform:scale(1.08);border-color:var(--primary)}
 
 /* Modal */
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:50;align-items:flex-end;justify-content:center}
@@ -75,77 +78,122 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 
 /* Confirm dialog */
 .confirm-bar{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
+/* Paste from AI */
+.paste-textarea{width:100%;min-height:150px;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'Courier New',monospace;font-size:.82rem;resize:vertical;line-height:1.5}
+.paste-textarea::placeholder{color:var(--muted)}
+.paste-info{font-size:.82rem;color:var(--muted);margin-bottom:12px;line-height:1.6}
+.paste-info em{color:var(--text);font-style:italic}
+.paste-example{background:var(--card);padding:12px;border-radius:8px;font-size:.75rem;color:var(--muted);margin-bottom:14px;overflow-x:auto;white-space:pre;font-family:'Courier New',monospace;line-height:1.4;border:1px solid var(--border)}
+.paste-error{color:var(--danger);font-size:.85rem;margin-top:8px;display:none;padding:8px 12px;background:rgba(239,68,68,.1);border-radius:8px}
+.paste-error.show{display:block}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>GymLog</h1>
-  <button class="btn btn-ghost btn-sm" onclick="exportData()">Export</button>
+<h1>GymLog</h1>
+<button class="btn btn-ghost btn-sm" onclick="exportData()">Export</button>
 </header>
 
 <nav>
-  <button class="active" onclick="switchTab('log',this)">Log</button>
-  <button onclick="switchTab('history',this)">History</button>
-  <button onclick="switchTab('stats',this)">Stats</button>
+<button class="active" onclick="switchTab('log',this)">Log</button>
+<button onclick="switchTab('history',this)">History</button>
+<button onclick="switchTab('stats',this)">Stats</button>
 </nav>
 
 <!-- LOG VIEW -->
 <div id="log" class="view active">
-  <div id="activeWorkout"></div>
-  <div id="noWorkout" class="empty-state">
-    <div class="icon">ðï¸</div>
-    <p>No active workout.<br>Tap + to start one!</p>
-  </div>
+<div id="activeWorkout"></div>
+<div id="noWorkout" class="empty-state">
+<div class="icon">&#127947;&#65039;</div>
+<p>No active workout.<br>Tap + to start one!</p>
+</div>
 </div>
 
 <!-- HISTORY VIEW -->
 <div id="history" class="view">
-  <div id="historyList"></div>
-  <div id="noHistory" class="empty-state">
-    <div class="icon">ð</div>
-    <p>No workouts yet.<br>Your completed sessions appear here.</p>
-  </div>
+<div id="historyList"></div>
+<div id="noHistory" class="empty-state">
+<div class="icon">&#128202;</div>
+<p>No workouts yet.<br>Your completed sessions appear here.</p>
+</div>
 </div>
 
 <!-- STATS VIEW -->
 <div id="stats" class="view">
-  <div id="statsContent"></div>
+<div id="statsContent"></div>
 </div>
 
-<button class="fab" onclick="startWorkout()">+</button>
+<!-- FAB Group -->
+<div class="fab-group">
+<button class="fab" onclick="startWorkout()" title="New workout">+</button>
+<button class="paste-fab" onclick="openPasteModal()" title="Paste from AI">&#128203;</button>
+</div>
 
 <!-- ADD EXERCISE MODAL -->
 <div id="exerciseModal" class="modal-overlay">
-  <div class="modal">
-    <h2>Add Exercise</h2>
-    <div class="form-group">
-      <label>Exercise Name</label>
-      <input id="exerciseName" placeholder="e.g. Bench Press" list="exerciseList">
-      <datalist id="exerciseList"></datalist>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-primary" style="flex:1" onclick="addExercise()">Add</button>
-      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-    </div>
-  </div>
+<div class="modal">
+<h2>Add Exercise</h2>
+<div class="form-group">
+<label>Exercise Name</label>
+<input id="exerciseName" placeholder="e.g. Bench Press" list="exerciseList">
+<datalist id="exerciseList"></datalist>
+</div>
+<div style="display:flex;gap:8px">
+<button class="btn btn-primary" style="flex:1" onclick="addExercise()">Add</button>
+<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+</div>
+</div>
+</div>
+
+<!-- PASTE FROM AI MODAL -->
+<div id="pasteModal" class="modal-overlay">
+<div class="modal">
+<h2>&#128203; Paste from AI</h2>
+<p class="paste-info">
+Paste a workout plan in JSON format generated by <strong>Claude</strong>, <strong>ChatGPT</strong>, or any AI assistant.<br><br>
+Ask your AI: <em>"Give me a push day routine as JSON with fields: name, exercises (each with name, sets, reps, rest in seconds, and notes)"</em>
+</p>
+<div class="paste-example">{
+  "name": "Push Day",
+  "exercises": [
+    {
+      "name": "Bench Press",
+      "sets": 4,
+      "reps": 8,
+      "rest": 120,
+      "notes": "Controlled negative"
+    }
+  ]
+}</div>
+<div class="form-group">
+<label>Paste JSON Here</label>
+<textarea id="pasteInput" class="paste-textarea" placeholder='{ "name": "My Workout", "exercises": [...] }'></textarea>
+</div>
+<div id="pasteError" class="paste-error"></div>
+<div style="display:flex;gap:8px;margin-top:4px">
+<button class="btn btn-primary" style="flex:1" onclick="submitPaste()">Load Workout</button>
+<button class="btn btn-ghost" onclick="closePasteModal()">Cancel</button>
+</div>
+</div>
 </div>
 
 <script>
-/* ââ State âââââââââââââââââââââââââââââââââââââââââââ */
+/* -- State ------------------------------------------------- */
 const DB_KEY = 'gymlog_workouts';
 const EXERCISES_KEY = 'gymlog_exercises';
 
 let workouts = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
 let knownExercises = JSON.parse(localStorage.getItem(EXERCISES_KEY) || '["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row","Pull Up","Lat Pulldown","Bicep Curl","Tricep Pushdown","Leg Press","Romanian Deadlift","Lateral Raise"]');
-let current = null; // active workout in progress
+let current = null;
 
 function save() {
   localStorage.setItem(DB_KEY, JSON.stringify(workouts));
   localStorage.setItem(EXERCISES_KEY, JSON.stringify([...new Set(knownExercises)]));
 }
 
-/* ââ Tabs ââââââââââââââââââââââââââââââââââââââââââââ */
+/* -- Tabs -------------------------------------------------- */
 function switchTab(id, btn) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('nav button').forEach(b => b.classList.remove('active'));
@@ -155,7 +203,7 @@ function switchTab(id, btn) {
   if (id === 'stats') renderStats();
 }
 
-/* ââ Workout lifecycle âââââââââââââââââââââââââââââââ */
+/* -- Workout lifecycle ------------------------------------- */
 function startWorkout() {
   if (current) { openModal(); return; }
   current = { id: Date.now(), date: new Date().toISOString(), exercises: [] };
@@ -175,29 +223,29 @@ function cancelWorkout() {
   if (confirm('Discard this workout?')) { current = null; renderActive(); }
 }
 
-/* ââ Exercise modal ââââââââââââââââââââââââââââââââââ */
+/* -- Exercise modal ---------------------------------------- */
 function openModal() {
   const dl = document.getElementById('exerciseList');
-  dl.innerHTML = knownExercises.map(e => `<option value="${e}">`).join('');
+  dl.innerHTML = knownExercises.map(e => '<option value="' + e + '">').join('');
   document.getElementById('exerciseName').value = '';
   document.getElementById('exerciseModal').classList.add('open');
-  setTimeout(() => document.getElementById('exerciseName').focus(), 100);
+  setTimeout(function(){ document.getElementById('exerciseName').focus(); }, 100);
 }
 function closeModal() { document.getElementById('exerciseModal').classList.remove('open'); }
 
 function addExercise() {
-  const name = document.getElementById('exerciseName').value.trim();
+  var name = document.getElementById('exerciseName').value.trim();
   if (!name || !current) return;
   if (!knownExercises.includes(name)) knownExercises.push(name);
-  current.exercises.push({ name, sets: [{ weight: '', reps: '', rpe: '' }] });
+  current.exercises.push({ name: name, sets: [{ weight: '', reps: '', rpe: '' }] });
   save();
   closeModal();
   renderActive();
 }
 
-/* ââ Set management ââââââââââââââââââââââââââââââââââ */
+/* -- Set management ---------------------------------------- */
 function addSet(ei) {
-  const last = current.exercises[ei].sets.at(-1) || {};
+  var last = current.exercises[ei].sets[current.exercises[ei].sets.length - 1] || {};
   current.exercises[ei].sets.push({ weight: last.weight || '', reps: last.reps || '', rpe: '' });
   renderActive();
 }
@@ -214,62 +262,64 @@ function removeExercise(ei) {
   renderActive();
 }
 
-/* ââ Render active workout âââââââââââââââââââââââââââ */
+/* -- Render active workout --------------------------------- */
 function renderActive() {
-  const cont = document.getElementById('activeWorkout');
-  const empty = document.getElementById('noWorkout');
+  var cont = document.getElementById('activeWorkout');
+  var empty = document.getElementById('noWorkout');
   if (!current) { cont.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
 
-  let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-    <h2 style="font-size:1.05rem">ðï¸ Workout in Progress</h2>
-    <div style="display:flex;gap:6px">
-      <button class="btn btn-danger btn-sm" onclick="cancelWorkout()">Discard</button>
-      <button class="btn btn-primary btn-sm" onclick="finishWorkout()">Finish â</button>
-    </div></div>`;
+  var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">' +
+    '<h2 style="font-size:1.05rem">\u{1F3CB}ï¸ Workout in Progress</h2>' +
+    '<div style="display:flex;gap:6px">' +
+    '<button class="btn btn-danger btn-sm" onclick="cancelWorkout()">Discard</button>' +
+    '<button class="btn btn-primary btn-sm" onclick="finishWorkout()">Finish â</button>' +
+    '</div></div>';
 
-  current.exercises.forEach((ex, ei) => {
-    html += `<div class="exercise-block"><div style="display:flex;justify-content:space-between;align-items:center">
-      <h4>${esc(ex.name)}</h4>
-      <button class="remove-set" onclick="removeExercise(${ei})" title="Remove exercise">â</button></div>
-      <div class="set-header"><span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span></span></div>`;
-    ex.sets.forEach((s, si) => {
-      html += `<div class="set-row">
-        <span>${si+1}</span>
-        <input type="number" inputmode="decimal" value="${s.weight}" placeholder="lbs" onchange="updateSet(${ei},${si},'weight',this.value)">
-        <input type="number" inputmode="numeric" value="${s.reps}" placeholder="reps" onchange="updateSet(${ei},${si},'reps',this.value)">
-        <input type="number" inputmode="decimal" value="${s.rpe}" placeholder="RPE" min="1" max="10" onchange="updateSet(${ei},${si},'rpe',this.value)">
-        <button class="remove-set" onclick="removeSet(${ei},${si})">â</button></div>`;
+  current.exercises.forEach(function(ex, ei) {
+    html += '<div class="exercise-block"><div style="display:flex;justify-content:space-between;align-items:center">' +
+      '<h4>' + esc(ex.name) + '</h4>' +
+      '<button class="remove-set" onclick="removeExercise(' + ei + ')" title="Remove exercise">â</button></div>' +
+      '<div class="set-header"><span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span></span></div>';
+    ex.sets.forEach(function(s, si) {
+      html += '<div class="set-row">' +
+        '<span>' + (si+1) + '</span>' +
+        '<input type="number" inputmode="decimal" value="' + s.weight + '" placeholder="lbs" onchange="updateSet(' + ei + ',' + si + ',\'weight\',this.value)">' +
+        '<input type="number" inputmode="numeric" value="' + s.reps + '" placeholder="reps" onchange="updateSet(' + ei + ',' + si + ',\'reps\',this.value)">' +
+        '<input type="number" inputmode="decimal" value="' + s.rpe + '" placeholder="RPE" min="1" max="10" onchange="updateSet(' + ei + ',' + si + ',\'rpe\',this.value)">' +
+        '<button class="remove-set" onclick="removeSet(' + ei + ',' + si + ')">â</button></div>';
     });
-    html += `<div class="exercise-actions">
-      <button class="btn btn-ghost btn-sm" onclick="addSet(${ei})">+ Set</button></div></div>`;
+    html += '<div class="exercise-actions">' +
+      '<button class="btn btn-ghost btn-sm" onclick="addSet(' + ei + ')">+ Set</button></div></div>';
   });
 
-  html += `<button class="btn btn-ghost" style="width:100%;margin-top:8px" onclick="openModal()">+ Add Exercise</button>`;
+  html += '<button class="btn btn-ghost" style="width:100%;margin-top:8px" onclick="openModal()">+ Add Exercise</button>';
   cont.innerHTML = html;
 }
 
-/* ââ History âââââââââââââââââââââââââââââââââââââââââ */
+/* -- History ----------------------------------------------- */
 function renderHistory() {
-  const list = document.getElementById('historyList');
-  const empty = document.getElementById('noHistory');
+  var list = document.getElementById('historyList');
+  var empty = document.getElementById('noHistory');
   if (workouts.length === 0) { list.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
 
-  list.innerHTML = workouts.map((w, wi) => {
-    const d = new Date(w.date);
-    const dateStr = d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
-    const totalSets = w.exercises.reduce((s, e) => s + e.sets.length, 0);
-    const totalVol = w.exercises.reduce((v, e) => v + e.sets.reduce((sv, s) => sv + (parseFloat(s.weight)||0) * (parseFloat(s.reps)||0), 0), 0);
-    let rows = w.exercises.map(e => {
-      const detail = e.sets.map(s => `${s.weight||'â'}Ã${s.reps||'â'}`).join(', ');
-      return `<div class="exercise-row"><span class="name">${esc(e.name)}</span><span class="sets">${detail}</span></div>`;
+  list.innerHTML = workouts.map(function(w, wi) {
+    var d = new Date(w.date);
+    var dateStr = d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
+    var totalSets = w.exercises.reduce(function(s, e) { return s + e.sets.length; }, 0);
+    var totalVol = w.exercises.reduce(function(v, e) {
+      return v + e.sets.reduce(function(sv, s) { return sv + (parseFloat(s.weight)||0) * (parseFloat(s.reps)||0); }, 0);
+    }, 0);
+    var rows = w.exercises.map(function(e) {
+      var detail = e.sets.map(function(s) { return (s.weight||'â') + 'Ã' + (s.reps||'â'); }).join(', ');
+      return '<div class="exercise-row"><span class="name">' + esc(e.name) + '</span><span class="sets">' + detail + '</span></div>';
     }).join('');
-    return `<div class="workout-card">
-      <div style="display:flex;justify-content:space-between;align-items:start">
-        <div><h3>${dateStr}</h3><div class="meta">${w.exercises.length} exercises Â· ${totalSets} sets Â· ${Math.round(totalVol).toLocaleString()} lbs volume</div></div>
-        <button class="remove-set" onclick="deleteWorkout(${wi})" title="Delete">ðï¸</button>
-      </div>${rows}</div>`;
+    return '<div class="workout-card">' +
+      '<div style="display:flex;justify-content:space-between;align-items:start">' +
+      '<div><h3>' + dateStr + '</h3><div class="meta">' + w.exercises.length + ' exercises Â· ' + totalSets + ' sets Â· ' + Math.round(totalVol).toLocaleString() + ' lbs volume</div></div>' +
+      '<button class="remove-set" onclick="deleteWorkout(' + wi + ')" title="Delete">\u{1F5D1}ï¸</button>' +
+      '</div>' + rows + '</div>';
   }).join('');
 }
 
@@ -280,53 +330,135 @@ function deleteWorkout(i) {
   renderHistory();
 }
 
-/* ââ Stats âââââââââââââââââââââââââââââââââââââââââââ */
+/* -- Stats ------------------------------------------------- */
 function renderStats() {
-  const c = document.getElementById('statsContent');
-  if (workouts.length === 0) { c.innerHTML = '<div class="empty-state"><div class="icon">ð</div><p>Complete a workout to see stats.</p></div>'; return; }
+  var c = document.getElementById('statsContent');
+  if (workouts.length === 0) {
+    c.innerHTML = '<div class="empty-state"><div class="icon">\u{1F4CA}</div><p>Complete a workout to see stats.</p></div>';
+    return;
+  }
 
-  const totalW = workouts.length;
-  const totalSets = workouts.reduce((s,w) => s + w.exercises.reduce((a,e) => a+e.sets.length, 0), 0);
-  const totalVol = workouts.reduce((v,w) => v + w.exercises.reduce((a,e) => a+e.sets.reduce((sv,s) => sv+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0),0),0),0);
-  const exCounts = {};
-  workouts.forEach(w => w.exercises.forEach(e => { exCounts[e.name] = (exCounts[e.name]||0) + 1; }));
-  const topEx = Object.entries(exCounts).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  var totalW = workouts.length;
+  var totalSets = workouts.reduce(function(s,w) { return s + w.exercises.reduce(function(a,e) { return a+e.sets.length; }, 0); }, 0);
+  var totalVol = workouts.reduce(function(v,w) {
+    return v + w.exercises.reduce(function(a,e) {
+      return a + e.sets.reduce(function(sv,s) { return sv+(parseFloat(s.weight)||0)*(parseFloat(s.reps)||0); },0);
+    },0);
+  },0);
+  var exCounts = {};
+  workouts.forEach(function(w) { w.exercises.forEach(function(e) { exCounts[e.name] = (exCounts[e.name]||0) + 1; }); });
+  var topEx = Object.entries(exCounts).sort(function(a,b) { return b[1]-a[1]; }).slice(0,5);
 
-  let html = `<div class="stat-grid">
-    <div class="stat-box"><div class="value">${totalW}</div><div class="label">Workouts</div></div>
-    <div class="stat-box"><div class="value">${totalSets}</div><div class="label">Total Sets</div></div>
-    <div class="stat-box"><div class="value">${Math.round(totalVol).toLocaleString()}</div><div class="label">Total Volume (lbs)</div></div>
-    <div class="stat-box"><div class="value">${Object.keys(exCounts).length}</div><div class="label">Unique Exercises</div></div>
-  </div>`;
+  var html = '<div class="stat-grid">' +
+    '<div class="stat-box"><div class="value">' + totalW + '</div><div class="label">Workouts</div></div>' +
+    '<div class="stat-box"><div class="value">' + totalSets + '</div><div class="label">Total Sets</div></div>' +
+    '<div class="stat-box"><div class="value">' + Math.round(totalVol).toLocaleString() + '</div><div class="label">Total Volume (lbs)</div></div>' +
+    '<div class="stat-box"><div class="value">' + Object.keys(exCounts).length + '</div><div class="label">Unique Exercises</div></div>' +
+    '</div>';
 
   if (topEx.length) {
-    html += `<div class="workout-card"><h3 style="margin-bottom:10px">Top Exercises</h3>`;
-    topEx.forEach(([name,count]) => {
-      html += `<div class="exercise-row"><span class="name">${esc(name)}</span><span class="sets">${count}Ã</span></div>`;
+    html += '<div class="workout-card"><h3 style="margin-bottom:10px">Top Exercises</h3>';
+    topEx.forEach(function(item) {
+      html += '<div class="exercise-row"><span class="name">' + esc(item[0]) + '</span><span class="sets">' + item[1] + 'Ã</span></div>';
     });
-    html += `</div>`;
+    html += '</div>';
   }
   c.innerHTML = html;
 }
 
-/* ââ Export âââââââââââââââââââââââââââââââââââââââââââ */
+/* -- Export ------------------------------------------------ */
 function exportData() {
-  const blob = new Blob([JSON.stringify(workouts, null, 2)], {type:'application/json'});
-  const a = document.createElement('a');
+  var blob = new Blob([JSON.stringify(workouts, null, 2)], {type:'application/json'});
+  var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `gymlog-export-${new Date().toISOString().slice(0,10)}.json`;
+  a.download = 'gymlog-export-' + new Date().toISOString().slice(0,10) + '.json';
   a.click();
 }
 
-/* ââ Util ââââââââââââââââââââââââââââââââââââââââââââ */
-function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+/* -- Paste from AI ----------------------------------------- */
+function openPasteModal() {
+  document.getElementById('pasteInput').value = '';
+  document.getElementById('pasteError').className = 'paste-error';
+  document.getElementById('pasteError').textContent = '';
+  document.getElementById('pasteModal').classList.add('open');
+  setTimeout(function(){ document.getElementById('pasteInput').focus(); }, 100);
+}
 
-/* ââ Init ââââââââââââââââââââââââââââââââââââââââââââ */
+function closePasteModal() {
+  document.getElementById('pasteModal').classList.remove('open');
+}
+
+function submitPaste() {
+  var raw = document.getElementById('pasteInput').value.trim();
+  var errEl = document.getElementById('pasteError');
+  errEl.className = 'paste-error';
+  errEl.textContent = '';
+
+  if (!raw) {
+    errEl.textContent = 'Please paste a JSON workout plan.';
+    errEl.className = 'paste-error show';
+    return;
+  }
+
+  var data;
+  try {
+    data = JSON.parse(raw);
+  } catch (e) {
+    errEl.textContent = 'Invalid JSON â check for missing commas or brackets. ' + e.message;
+    errEl.className = 'paste-error show';
+    return;
+  }
+
+  if (!data.exercises || !Array.isArray(data.exercises) || data.exercises.length === 0) {
+    errEl.textContent = 'JSON must include an "exercises" array with at least one exercise.';
+    errEl.className = 'paste-error show';
+    return;
+  }
+
+  var exercises = [];
+  for (var i = 0; i < data.exercises.length; i++) {
+    var ex = data.exercises[i];
+    if (!ex.name) continue;
+    var numSets = parseInt(ex.sets) || 3;
+    var repsVal = ex.reps ? String(ex.reps) : '';
+    var sets = [];
+    for (var j = 0; j < numSets; j++) {
+      sets.push({ weight: '', reps: repsVal, rpe: '' });
+    }
+    if (!knownExercises.includes(ex.name)) knownExercises.push(ex.name);
+    exercises.push({ name: ex.name, sets: sets, _rest: ex.rest || null, _notes: ex.notes || '' });
+  }
+
+  if (exercises.length === 0) {
+    errEl.textContent = 'No valid exercises found. Each exercise needs at least a "name" field.';
+    errEl.className = 'paste-error show';
+    return;
+  }
+
+  if (current && !confirm('You have an active workout. Replace it with the AI plan?')) return;
+
+  current = { id: Date.now(), date: new Date().toISOString(), exercises: exercises };
+  save();
+  closePasteModal();
+
+  // Switch to Log tab
+  document.querySelectorAll('.view').forEach(function(v) { v.classList.remove('active'); });
+  document.querySelectorAll('nav button').forEach(function(b) { b.classList.remove('active'); });
+  document.getElementById('log').classList.add('active');
+  document.querySelector('nav button').classList.add('active');
+
+  renderActive();
+}
+
+/* -- Util -------------------------------------------------- */
+function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+/* -- Init -------------------------------------------------- */
 renderActive();
 
 /* Service Worker */
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(()=>{});
+  navigator.serviceWorker.register('sw.js').catch(function(){});
 }
 </script>
 </body>
