@@ -44,7 +44,7 @@ required state channels. If they disagree, STOP and report.
 |------|---------|--------|
 | 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | ✅ verified |
 | 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | ✅ verified |
-| 3 | F3 — Persistent pinned workout timer (both modes) | in progress |
+| 3 | F3 — Persistent pinned workout timer (both modes) | auditing |
 | 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | not started |
 | 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | not started |
 
@@ -289,8 +289,79 @@ Order rationale:
   (CSS is shared `var(--…)`, unchanged, but live paint not observed here).
 
 ### Step 3 — Persistent pinned workout timer (F3)
-- Status: in progress
-- Worker verification (gym open / gym closed): —
+- Status: auditing
+- Commits:
+  - `2f58ea2` [step 3] pin active workout timer with sticky positioning
+  - `f9bb199` [step 3] bump sw cache to v8
+- Diff summary (4 ins / 2 del in index.html incl. comment; sw.js +1/-1):
+  - `index.html`: ONE CSS rule changed — `.workout-timer` (`:164`) gained
+    `position:sticky; top:calc(71px + var(--safe-top)); z-index:5` (prepended;
+    everything else — `background:var(--surface)`, border, padding, margin-bottom,
+    flex layout — unchanged). Added an explanatory CSS comment above the rule.
+    NO JS change: `renderActive()` still emits the same `.workout-timer` markup with
+    `#workoutTimer` intact; the `startTimer()` interval (`:642`, updates `#workoutTimer`
+    `:647` and `#gymOverallTimer` `:649`) is untouched.
+  - `sw.js`: `CACHE_NAME` `gymlog-v7` → `gymlog-v8`.
+- POSITIONING APPROACH + REASONING:
+  - Chose **`position:sticky` on the existing `.workout-timer` card** (least invasive:
+    one CSS rule, no DOM/JS restructure, no new wrapper). Rejected alternatives:
+    `position:fixed` (would need manual width/left math against the 16px `.view` padding
+    and breaks out of normal flow, leaving a collapse/jump where the card was) and
+    restructuring `#log` into its own flex scroll container (large, risks regressing
+    Step 2's home-plans idle layout and the body-level sticky header). Sticky keeps the
+    card in normal flow so layout above/below is unaffected; it simply "catches" at the
+    offset once scrolled to.
+  - **What pins:** ONLY the timer bar. The Discard/Finish action row (above it) and the
+    GYM MODE button + exercises (below it) scroll normally. Decision: keep the pinned
+    element compact so it never eats a small phone's screen; the timer is the one thing
+    that must stay glanceable. Discard/Finish are deliberate actions, fine to scroll to.
+- HEADER-OFFSET / SAFE-AREA HANDLING:
+  - Body is the scroll container; `header` is `position:sticky;top:0;z-index:10` (`:44`)
+    with `padding:16px 20px; padding-top:calc(16px + var(--safe-top))` and a 1px
+    `border-bottom`. Its tallest content-row child is the gear `.icon-btn` at 38px
+    (`:54`; Export `.btn-sm`=36px `:52`, h1≈24px) → header height (excluding inset) =
+    16 + 38 + 16 + 1 = **71px**, ON TOP OF the `safe-top` the header adds via padding-top.
+  - Sticky `top:calc(71px + var(--safe-top))` therefore lands the timer's top edge flush
+    with the header's bottom edge: no gap, no hide-under-header. `--safe-top` is counted
+    once here (the header counts it once in its own padding; these are two different boxes,
+    not a double-count) so on Fold 5 cover / notched phones the timer drops by exactly the
+    inset, same as the header. On a non-inset display `--safe-top`=0 → `top:71px`, still flush.
+  - **Stacking:** timer `z-index:5` < header `z-index:10`, so if sub-pixel rounding ever
+    let them touch, the timer tucks UNDER the header (correct), never over it. Because the
+    offset equals the header height they don't actually overlap in normal cases.
+  - **Background / see-through:** the card keeps its opaque `var(--surface)` fill + 1px
+    `var(--border)` (solid in BOTH light `#ffffff` and dark `#1e293b`), so exercise rows
+    scrolling behind it are fully covered — no content bleed. Content lives in the same
+    16px-padded `.view` column as the card, so nothing renders in the side gutters either;
+    the only thing ever visible in the flush strip is `var(--bg)`, and there is no strip
+    when offset==header height.
+  - **Small screen:** `@media(max-width:380px)` (`:351`) only overrides `.workout-timer`
+    padding (10px 12px); it does NOT touch position/top/z-index, so sticky still applies on
+    narrow phones. Card height shrinks (smaller padding + 1.8rem timer value `:346`) → less
+    screen eaten while pinned.
+- GYM MODE (verify + keep, per Phase 1):
+  - Gym CSS block (`:184-356`) is NOT in the diff. `.gym-header` (`:193`, `flex-shrink:0`,
+    contains `#gymOverallTimer`) still sits ABOVE `.gym-main` (`:213`, `flex:1;overflow-y:auto`)
+    inside `#gymOverlay` (`flex-direction:column`). The gym overall timer remains pinned in
+    the gym's OWN scroll container — unchanged. My normal-mode sticky rule only affects
+    `.workout-timer`, which does not exist inside the gym overlay (gym renders its own markup).
+    The `#gymOverallTimer` id and its interval update are untouched.
+- Worker verification (no headless browser in env — rigorous CSS/stacking reasoning + offset
+  math + served-code check; LIVE scroll behavior is a real-browser check to confirm at preview):
+  - GYM CLOSED (normal mode): With a long active workout (several exercises/sets), scrolling
+    the body scrolls the action row out under the header; the `.workout-timer` catches at
+    `top:calc(71px + safe-top)` = exactly the header's bottom, staying visible. It does not
+    hide under the header (offset == header height) and does not cover the first exercise
+    (the first exercise block sits BELOW the timer in flow + the timer's 12px margin-bottom;
+    sticky doesn't change document flow, so on initial unscrolled view the first exercise is
+    exactly where it was). Opaque themed background → no content bleed. Light & dark both use
+    var-driven surface/border → correct. PASS by reasoning; live scroll = preview confirm.
+  - GYM OPEN: open gym mode (only possible with an active workout); `.gym-main` scrolls if
+    tall, `.gym-header`/`#gymOverallTimer` stay pinned (pre-existing, untouched). My change
+    is not present in the gym overlay. `openGymMode`/`closeGymMode` unaffected; `closeGymMode`
+    → `renderActive` re-emits the same sticky `.workout-timer`. PASS (both modes), no regression.
+  - Served-code check: preview on :4000 serves the working tree → confirmed serving
+    `position:sticky;top:calc(71px + var(--safe-top))` in index.html and `gymlog-v8` in sw.js.
 - Auditor findings: —
 
 ### Step 4 — Set completion check-off (F4)
