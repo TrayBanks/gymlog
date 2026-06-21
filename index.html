@@ -156,8 +156,12 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .day-picker-item .day-name{font-weight:600;font-size:.95rem}
 .day-picker-item .day-meta{font-size:.8rem;color:var(--muted)}
 
-/* Active workout timer card */
-.workout-timer{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:14px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* Active workout timer card — pinned below the sticky app header.
+   Header height = 16(pad-top) + 38(tallest control: .icon-btn) + 16(pad-bot) + 1(border) = 71px,
+   plus the safe-area inset the header already adds via padding-top. The sticky timer's
+   `top` matches that so it catches flush under the header without a gap or overlap.
+   z-index:5 sits below the header (z-index:10) so it tucks under, never over, the header. */
+.workout-timer{position:sticky;top:calc(71px + var(--safe-top));z-index:5;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:14px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .timer-left .timer-value{font-size:clamp(2rem,9vw,2.8rem);font-weight:800;font-variant-numeric:tabular-nums;color:var(--primary);letter-spacing:2px;line-height:1}
 .timer-left .timer-label{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
 .timer-right{text-align:right}
