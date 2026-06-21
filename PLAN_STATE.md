@@ -510,7 +510,84 @@ Order rationale:
   stats, export, FAB, add/remove set, history all untouched. Both inline `<script>` blocks
   parse via `new Function()`. Preview on :4000 serves the new code + `gymlog-v9`.
 - Worker verification (gym open / gym closed): PASS both (detailed above).
-- Auditor findings: —
+- Auditor findings: PASS — Check-off control is correct and additive; done-row grid columns match
+  children (3=3); cross-mode `_done` is consistent because both writers mutate the same in-memory
+  `current` field and all gym read-paths are unchanged; `--success-bg` present in BOTH themes;
+  un-check fully restores editable inputs from `current`. Diff is tightly scoped (index.html
+  +42/-8 region: set-row loop + new fn + CSS/var; sw.js +1/-1). No blocking issues.
+  Confirmed:
+  1. **`toggleSetDone` correctness** (`index.html:768-776`). Resolves `arr` by section
+     (`warmup`→`current.warmups` else `current.exercises`), guards `arr[ei] && arr[ei].sets[si]`
+     → no throw on a bad index; returns early. Flips `set._done = !set._done` (undefined→true→false
+     node-simulated correct), calls `renderActive()`, and guards the gym refresh with
+     `document.getElementById('gymOverlay').classList.contains('open')` before `gymRenderContent()`.
+     `current` can only be null if no active workout, in which case no `.set-check` is rendered and
+     the handler is unreachable (and a null deref would throw on `arr` — but it's not callable). Inputs
+     live in `current` (not the DOM); un-check re-renders the editable row rebuilt from `current`, so
+     weight/reps/rpe are intact (node-sim: values preserved across true→false). PASS.
+  2. **Grid integrity — done-row columns MATCH children (the headline check).**
+     Editable `.set-row` grid stays `28px 1fr 1fr 1fr 32px` (`:101`); the 28px cell is *repurposed*
+     into the `.set-check` button (no new column). Editable markup emits 5 children (check, weight,
+     reps, rpe, remove) = 5 cols → MATCH. DONE row grid `.set-row.done` = `28px 1fr 32px` (`:110`,
+     3 cols); done markup (`:843-847`) emits exactly 3 children (check, `.set-summary` span, remove)
+     = 3 cols → MATCH. No 5-in-3 mismatch; layout does not break. `.set-check` `min-height:40px`
+     (`:107`) ≥ tap target; `@media(max-width:380px)` (`:360-361`) only shrinks `.set-check` /
+     `.set-summary` font to `.72rem` (does not touch grid/position) so both row states stay usable at
+     373px (Fold cover). `.set-header` (`:118`) stays 5-col `# Weight Reps RPE`; an editable row aligns
+     under it; a done row is its OWN independent grid so it renders fine, just doesn't column-align
+     with the header (cosmetic — see note 1). PASS.
+  3. **Cross-mode `_done` consistency (LOCKED identical both modes) — PASS, the key result.**
+     Both writers mutate the SAME field on the SAME in-memory `current` object; the gym read-paths
+     are byte-for-byte unchanged by this diff (grep-confirmed only the `gymRenderContent()` call was
+     added). (a) Normal-check → `openGymMode` first-incomplete `sets.findIndex(s=>!s._done)` (`:882`),
+     pips `s._done?' done'` (`:954`), counter (`:929`), `allDone sets.every(s=>s._done)` (`:913`) all
+     honor it. (b) Gym-mark → `closeGymMode()` (`:892`) calls `renderActive()` → normal block shows
+     the condensed/struck row. (c) Toggle-in-normal-while-gym-open → `gymRenderContent()` fires
+     (guarded), which re-reads `current` via `gymGetExercises()` (`:866`) → pips/counter refresh live.
+     `gymMarkSetDone` only ever sets `_done=true` (`:966`); the new toggle owns un-check in normal
+     mode → no writer conflict. NOTE: `gymMarkSetDone` calls `save()` (`:967`) but `toggleSetDone`
+     does not — this is NOT a desync: `save()` (`:573-577`) persists only `workouts`/`exercises`/`plans`,
+     and the in-progress `current` is NOT in `workouts` until `finishWorkout` does `workouts.unshift`
+     (`:714`). So neither writer durably persists `_done` on the active workout; both rely on finish.
+     Behavior is consistent. PASS.
+  4. **Visual "done" requirements met.** Done row is genuinely shorter: editable ≈ input 40px +
+     `margin-bottom:8px` ≈ 48px; done ≈ tallest cell 30px (`:112-113`) + `margin-bottom:4px` (`:110`)
+     ≈ 34px → ~14px / ~29% shorter (matches worker claim). Strikethrough `text-decoration:line-through`
+     + gray `color:var(--muted)` on `.set-summary` (`:111`). Check is green `var(--success)` ✓
+     (`&#10003;`, `:108`,`:838`) vs remove red `var(--danger)` ✕ (`&#10005;`, `:105`,`:846`/`:855`) —
+     distinct color AND glyph; remove still wired to `removeSet`. PASS (live tap/exact height = live-only).
+  5. **Theme correctness — PASS.** `--success-bg` present in BOTH `:root` dark `rgba(34,197,94,.14)`
+     (`:29`) and `:root[data-theme="light"]` `rgba(22,163,74,.12)` (`:41`). Check/summary use only
+     themed vars (`var(--success)`/`var(--success-bg)`/`var(--muted)`/`var(--border)`) — no hardcoded
+     color. Gym pip stays hardcoded `#22c55e` (`:319`, untouched) — correct, gym is always-dark. No
+     gym CSS in the diff.
+  6. **History + persistence — no regression.** `renderHistory` (`:1085`) maps each set to
+     `(s.weight||'—')+'×'+(s.reps||'—')` and ignores `_done` → done sets render identically; totals/
+     volume unaffected. `finishWorkout` (`:714`) `workouts.unshift(current)` persists `_done` flags
+     into `gymlog_workouts`. PASS.
+  7. **Regression scope — surgical.** `git diff b18d19b..HEAD` touches only index.html, sw.js,
+     PLAN_STATE.md. index.html changes are confined to the set-row loop + new `toggleSetDone` + the
+     `.set-check`/`.set-row.done` CSS + `--success-bg` var + the `@media(max-width:380px)` font lines.
+     No change to Steps 1-3 (settings/theme, home plans, pinned timer), paste, gym auto-advance/rest,
+     stats, export, FAB, add/remove/update set. No function signature changed (`toggleSetDone` is new;
+     callers are only the rendered buttons). Both inline `<script>` blocks parse via `new Function()`.
+  8. **Cache bump.** `sw.js` `gymlog-v8`→`gymlog-v9` (`4cb3f12`), +1/-1, nothing else in sw.js.
+  9. **Verification quality.** Worker used node sim + code trace (no headless browser), which is
+     appropriate. I re-ran an independent node parse of both script blocks (OK) + summary/toggle
+     simulation + grid-vs-children count, and confirmed the preview on :4000 serves HTTP 200, the
+     `toggleSetDone` code, and `gymlog-v9`.
+  Non-blocking notes / unverifiable without a live browser (no headless Chrome in env):
+  - (Minor cosmetic) The 5-col `.set-header` (`# Weight Reps RPE`) does NOT column-align over a
+    condensed 3-col done row. This does not break layout (independent grids); it just means the
+    struck summary sits left under the "Weight" label area. Acceptable; flag only if the user dislikes
+    it visually at preview.
+  - Real tap on `.set-check`, the actual rendered condensed height, and the real grid render at 373px
+    (Fold cover) are live-only — math/markup are correct, paint not observed.
+- Auditor STOP report: verdict PASS. Done-row grid-vs-columns = 3 cols / 3 children = MATCH (editable
+  5/5 MATCH). Cross-mode `_done` = consistent (same in-memory field, gym read-paths unchanged, no
+  writer conflict; `save()` mismatch is benign since `current` isn't persisted until finish).
+  `--success-bg` = present in BOTH dark `:root` and light `:root[data-theme="light"]`. Unverifiable
+  live: actual tap, real condensed height, real 373px grid render, header-vs-done-row visual alignment.
 
 ### Step 5 — Last-weight/sets memory (F5)
 - Status: not started
