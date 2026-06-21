@@ -46,7 +46,7 @@ required state channels. If they disagree, STOP and report.
 | 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | ✅ verified |
 | 3 | F3 — Persistent pinned workout timer (both modes) | ✅ verified |
 | 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | ✅ verified |
-| 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | in progress |
+| 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | auditing |
 
 Order rationale:
 - **Step 1 first** because the theme system refactors global `:root` CSS vars; landing it first
@@ -592,8 +592,78 @@ Order rationale:
   live: actual tap, real condensed height, real 373px grid render, header-vs-done-row visual alignment.
 
 ### Step 5 — Last-weight/sets memory (F5)
-- Status: in progress
-- Worker verification (gym open / gym closed): —
+- Status: auditing (worker done; awaiting auditor)
+- Commits:
+  - `7b5ab30` [step 5] add lastPerformance history lookup (incl. render wiring in both modes)
+  - `2886495` [step 5] bump sw cache to v10
+- Diff summary (index.html: +67 / -1 net; sw.js +1/-1):
+  - **New JS `lastPerformance(name)`** (right before `renderExerciseBlock`): scans
+    `workouts` newest-first; within each workout concatenates `(exercises||[]).concat(warmups||[])`
+    so WORKING sets win over a same-named warmup; matches by name; skips occurrences with
+    zero sets (keeps looking); returns `{sets, date, hasDone}` for the most-recent match or
+    `null`. `hasDone = sets.some(s => s && s._done)`. Defensive against missing
+    `warmups`/`exercises`, null entries, empty `workouts`, falsy/empty name.
+  - **New JS `lastPerfSetsHtml(lp, struckStyle)`**: maps each set to `weight×reps`
+    (`—` when missing; `0` preserved). Wraps each in `<span>`. Applies the passed
+    `struckStyle` ONLY to sets where `lp.hasDone && !s._done` (completed-vs-attempted
+    distinction). When `hasDone` is false (legacy/no `_done` anywhere) ALL sets render
+    neutral — no strike, no stigma. Joined with ` · `.
+  - **`renderExerciseBlock()`**: after the name/notes header row, if `lastPerformance(ex.name)`
+    is non-null, emits `<div class="last-perf">Last: …</div>` (struck style
+    `text-decoration:line-through;opacity:.55`) ABOVE the `.set-header`. New exercise with
+    no history emits nothing (no empty "Last:" clutter).
+  - **`gymRenderContent()`**: just after the `.gym-target` (weight×reps) line, if a prior
+    performance exists, emits `<div class="gym-last-perf">Last: …</div>` (struck style
+    `text-decoration:line-through;color:#444`).
+  - **New CSS**:
+    - `.last-perf` (NORMAL mode, themed): `color:var(--muted)`, `.72rem`, tabular-nums →
+      correct in BOTH light & dark.
+    - `.gym-last-perf` + `.gym-last-perf span` (GYM mode, HARDCODED `#888`, struck spans
+      inline `#444`): no themed vars — upholds locked "gym always-dark" decision. Sits
+      below `.gym-target` (which keeps its `margin-bottom:28px`); `margin:-16px 0 26px`
+      keeps it glanceable & tight under the target without crowding the big set counter.
+  - `sw.js`: `CACHE_NAME` `gymlog-v9` → `gymlog-v10`.
+- MATCH RULE: **case-insensitive, trimmed** exact-name match
+  (`String(name).trim().toLowerCase()` on both sides). Chosen over strict exact so
+  "Bench Press" / "bench press" / " Bench Press " resolve to the same lift. `esc()` is
+  used when PRINTING names/numbers; matching uses the raw trimmed/lowered string.
+- WORKING-OVER-WARMUP RULE: within a single historical workout, `exercises` are searched
+  before `warmups`, so if a user named a warmup identically to a working lift, the working
+  sets are surfaced (more meaningful as "last performance"). A warmup-only history still
+  matches (e.g. a lift only ever done as warm-up).
+- COMPLETED-vs-ATTEMPTED RENDERING RULE (incl. legacy):
+  - If the matched historical exercise has AT LEAST ONE set with `_done` truthy
+    (`hasDone===true`): completed sets render normally; sets NOT `_done` are de-emphasized
+    (strikethrough + dimmed — normal mode `opacity:.55`, gym `color:#444`).
+  - If the matched historical exercise has NO `_done` on ANY set (`hasDone===false`, e.g.
+    legacy data predating completion tracking): render EVERY set neutral — no strike, no
+    "not completed" stigma. Just `Last: 135×8 · 135×8`.
+- DEFENSIVE: missing weight/reps → `—`; `0` is preserved (not coerced to `—`); an
+  occurrence with empty `sets` is skipped (search continues to older workouts); never
+  throws on empty `workouts` or entries lacking `warmups`/`exercises`/`name`.
+- PERF: a single O(history) loop with early-return on first match; called per render in
+  both `renderExerciseBlock` (per exercise) and `gymRenderContent` (current exercise only).
+  No structures built/cached; simple and cheap. Not memoized (not needed at typical
+  history/exercise counts).
+- Worker verification (no headless browser — node simulation of the lookup/render helpers
+  + rigorous code trace; both inline `<script>` blocks re-parsed via `new Function()` = OK;
+  preview on :4000 serves the new code + `gymlog-v10`):
+  - **NORMAL mode (GYM CLOSED):** Exercise with prior history shows `Last: …` under the
+    name, above the sets, themed `var(--muted)`. Node-sim of a Bench Press fixture
+    (warmup 45×10 + working 135×8/135×8/140×6 with the 140×6 NOT done, `hasDone:true`) →
+    surfaces the WORKING sets `135×8 · 135×8 · 140×6` with `140×6` struck/dimmed. A legacy
+    fixture (no `_done`) → `Last: 225×5 · —×—` all neutral (no strike). New exercise with
+    no history → `lastPerformance` returns null → NOTHING rendered (no empty "Last:"). Light
+    & dark both use `var(--muted)` → correct (live paint = preview confirm). PASS.
+  - **GYM mode (GYM OPEN):** Same reference appears just under the target weight×reps line
+    via `.gym-last-perf`, hardcoded `#888` (struck `#444`) — gym dark palette, no themed
+    vars. `gymRenderContent` calls the SAME `lastPerformance` for the current exercise only;
+    null → nothing rendered; small/glanceable so it doesn't crowd the big set counter. PASS.
+  - **GYM CLOSED result:** PASS. **GYM OPEN result:** PASS.
+  - LOCKED (gym always-dark) upheld: grep confirms `.gym-last-perf` uses ZERO `var(--…)`;
+    only the NORMAL `.last-perf` uses `var(--muted)`.
+  - Live visual (real-browser paint of both lines in light/dark + the gym overlay) is a
+    real-browser confirm at the preview — logic/markup/parse verified here, paint not observed.
 - Auditor findings: —
 
 ---
