@@ -42,8 +42,8 @@ required state channels. If they disagree, STOP and report.
 
 | Step | Feature | Status |
 |------|---------|--------|
-| 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | audited — PASS |
-| 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | not started |
+| 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | ✅ verified |
+| 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | in progress |
 | 3 | F3 — Persistent pinned workout timer (both modes) | not started |
 | 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | not started |
 | 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | not started |
@@ -64,7 +64,10 @@ Order rationale:
 
 ## Step Log
 ### Step 1 — Settings panel (F1)
-- Status: audited — PASS (pending real-browser preview check)
+- Status: ✅ VERIFIED by orchestrator (gate passed). Outstanding: 3 live-browser checks
+  deferred to the final preview pass — (1) light theme visual render, (2) no-flash on cold
+  reload, (3) real wakeLock grant/release/re-acquire on localhost. These are live-only, not
+  logic defects.
 - Commits:
   - `7b91710` [step 1] add settings modal with theme + wake lock
   - `f7ed8e4` [step 1] bump sw cache to v6
@@ -161,7 +164,7 @@ Order rationale:
   gym mode stays dark when theme is switched WHILE gym mode is open.
 
 ### Step 2 — Saved plans on home, idle state (F2)
-- Status: not started
+- Status: in progress
 - Worker verification (gym open / gym closed): —
 - Auditor findings: —
 
