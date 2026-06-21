@@ -45,7 +45,7 @@ required state channels. If they disagree, STOP and report.
 | 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | ✅ verified |
 | 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | ✅ verified |
 | 3 | F3 — Persistent pinned workout timer (both modes) | ✅ verified |
-| 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | in progress |
+| 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | auditing |
 | 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | not started |
 
 Order rationale:
@@ -434,8 +434,82 @@ Order rationale:
     serves HTTP 200, the sticky rule, and `gymlog-v8`.
 
 ### Step 4 — Set completion check-off (F4)
-- Status: in progress
-- Worker verification (gym open / gym closed): —
+- Status: auditing
+- Commits:
+  - `86469cb` [step 4] add set check-off control writing `_done` with condensed strikethrough done styling
+  - `4cb3f12` [step 4] bump sw cache to v9
+- Diff summary (index.html: +24 / -8 net new in the set-row loop + new fn + CSS; sw.js +1/-1):
+  - **New JS `toggleSetDone(section, ei, si)`** (right after `updateSet`, `index.html`):
+    flips `current[warmups|exercises][ei].sets[si]._done`, calls `renderActive()`, and
+    if `#gymOverlay` has class `open` also calls `gymRenderContent()` so pips/counter/
+    first-incomplete stay in sync across modes. Guards on missing set. No new persistence
+    (matches gym-mode behavior — `current` is in-memory until `finishWorkout`).
+  - **`renderExerciseBlock()` set-row loop rewritten** (replaced the single
+    `opacity:.5` row): each row now leads with a `.set-check` button (the check control)
+    in the repurposed 28px cell. When NOT done → number, editable 3-input row (weight/
+    reps/rpe) + remove. When `_done` → check button shows `✓`, row becomes
+    `.set-row.done` (condensed grid `28px 1fr 32px`) holding a struck-through summary
+    span (`135 × 8 @8`, RPE omitted when blank) + the same remove-set button. Remove
+    (`removeSet`), add (`addSet`), update (`updateSet`) all unchanged and still wired.
+  - **New CSS**: `.set-check` (bordered tappable cell, `min-height:40px`, themed
+    `var(--border)`/`var(--muted)`); `.set-check.done` (green via `var(--success)` +
+    new `var(--success-bg)` tint); `.set-row.done` (3-col grid, `margin-bottom:4px`);
+    `.set-row.done .set-summary` (line-through, `var(--muted)`, single-line ellipsis);
+    `.set-row.done .set-check`/`.remove-set` shrink to `min-height:30px`. New
+    `--success-bg` var added to BOTH `:root` (dark `rgba(34,197,94,.14)`) and
+    `:root[data-theme="light"]` (`rgba(22,163,74,.12)`) → theme-correct light & dark.
+    `@media(max-width:380px)` adds `.set-check{font-size:.72rem}` +
+    `.set-row.done .set-summary{font-size:.72rem}` so it stays usable on Fold cover.
+  - `sw.js`: `CACHE_NAME` `gymlog-v8` → `gymlog-v9`.
+- GRID / CONDENSE APPROACH (stated):
+  - **Grid:** repurposed the leading **28px "#" cell into the check toggle** — NO new
+    column, so the editable grid stays `28px 1fr 1fr 1fr 32px` exactly (no Fold-cover
+    breakage; the number 1..n moves into the check button face when not done, becomes
+    `✓` when done). Check button fills the cell, `min-height:40px` (≥32px tap target).
+  - **Condense:** a done row drops the three full-height (`min-height:40px`) inputs and
+    collapses to a single struck-through summary line. Measured height delta: editable
+    row ≈ input 40px + `margin-bottom:8px` = **~48px**; done row ≈ tallest cell 30px +
+    `margin-bottom:4px` = **~34px** → ~14px (~30%) shorter per done set. The grid also
+    narrows from 5 cols to 3 (28px + summary + 32px), removing the reps/rpe input boxes.
+  - **Un-check:** the check button is present in BOTH states; tapping a done row's `✓`
+    calls `toggleSetDone` → `_done=false` → re-render restores the full editable row.
+- CROSS-MODE VERIFICATION (no headless browser — code trace + node simulation; live
+  click/visual = real-browser confirm at preview on :4000, which serves the new code
+  + `gymlog-v9`):
+  - **GYM CLOSED (normal mode):** Tap check → `toggleSetDone` flips `_done=true`,
+    `renderActive()` re-emits the row as `.set-row.done` (struck/gray/condensed summary);
+    gym overlay not open so the `gymRenderContent()` branch is skipped. Tap again →
+    `_done=false` → editable row restored. Node-simulated: undefined→true→false toggling
+    correct; summary `135 × 8 @8` and `135 × 6` (no `@` when rpe blank) correct. Add Set
+    around a done row: `addSet` pushes a new set (no `_done`) → renders as a normal
+    editable row below the condensed one. Remove Set on a done row: `removeSet` splices
+    it; if last set removed, exercise drops (unchanged behavior). PASS.
+  - **GYM OPEN (cross-consistency):**
+    (a) Mark done in NORMAL then open gym → `openGymMode` first-incomplete scan reads the
+        same `_done`; node-sim: marking set0 done → scan returns set1 (or -1 if all done),
+        so gym jumps past the normal-mode-checked set; pips show it green (pip reads
+        `s._done`), counter/`allDone` respect it. (Gym already reads `_done`; this change
+        doesn't alter gym read paths.) PASS.
+    (b) Mark done in GYM (`gymMarkSetDone` sets `_done=true`) then close → `closeGymMode`
+        calls `renderActive()` → the normal block now shows the new condensed/struck row
+        automatically. PASS.
+    (c) Toggle in normal WHILE gym open → `toggleSetDone` also calls `gymRenderContent()`
+        (guarded by `#gymOverlay.classList.contains('open')`) so pips/counter refresh live
+        without leaving the overlay. PASS.
+  - LOCKED (gym always-dark) upheld: gym pip styling untouched (still `#22c55e`); new
+    normal-mode check styling uses themed vars only (`--success`/`--success-bg`/`--muted`/
+    `--border`). No gym CSS in the diff.
+- HISTORY render check: `renderHistory` (`index.html` ~`:1052`) maps each set to
+  `(s.weight||'—')+'×'+(s.reps||'—')` and IGNORES `_done` entirely → a `_done` set still
+  renders identically in history. `finishWorkout` persists `current` (incl. `_done` flags)
+  into `gymlog_workouts`; history unaffected. No regression.
+- Persistence: `toggleSetDone` does NOT add new persistence — `_done` lives in in-memory
+  `current` and lands in history on finish, consistent with existing gym-mode behavior.
+- Regression scope: only the set-row loop, one new function, and additive CSS/var changed.
+  Settings/theme (1), home plans (2), pinned timer (3), paste, gym auto-advance/rest,
+  stats, export, FAB, add/remove set, history all untouched. Both inline `<script>` blocks
+  parse via `new Function()`. Preview on :4000 serves the new code + `gymlog-v9`.
+- Worker verification (gym open / gym closed): PASS both (detailed above).
 - Auditor findings: —
 
 ### Step 5 — Last-weight/sets memory (F5)
