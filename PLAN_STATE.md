@@ -42,7 +42,7 @@ required state channels. If they disagree, STOP and report.
 
 | Step | Feature | Status |
 |------|---------|--------|
-| 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | in progress |
+| 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | auditing |
 | 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | not started |
 | 3 | F3 — Persistent pinned workout timer (both modes) | not started |
 | 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | not started |
@@ -64,9 +64,59 @@ Order rationale:
 
 ## Step Log
 ### Step 1 — Settings panel (F1)
-- Status: in progress
-- Worker verification (gym open / gym closed): —
+- Status: auditing
+- Commits:
+  - `7b91710` [step 1] add settings modal with theme + wake lock
+  - `f7ed8e4` [step 1] bump sw cache to v6
+- Diff summary:
+  - `sw.js`: `CACHE_NAME` `gymlog-v5` → `gymlog-v6`.
+  - `index.html`:
+    - New `<head>` inline script (before `<style>`) applies `data-theme="light"`
+      from `gymlog_settings` BEFORE first paint (no flash). Dark = default (no attr).
+    - New `:root[data-theme="light"]{…}` palette (light bg/surface/card, dark text,
+      adjusted muted/border/warmup; `--primary` purple kept). Drives header, nav,
+      cards, modals, stats, forms, FAB, plans — all via existing CSS vars.
+    - Header: gear `icon-btn` next to Export → `openSettings()`.
+    - New `#settingsModal` (reuses `.modal-overlay`/`.modal`): Theme segmented
+      control (Light/Dark) + Keep-screen-awake toggle switch. New CSS:
+      `.icon-btn`, `.settings-row`, `.switch`, `.theme-seg`.
+    - New JS: `SETTINGS_KEY='gymlog_settings'`; `loadSettings()/saveSettings()`
+      (separate from `save()`, which still writes workouts/exercises/plans);
+      `applyTheme()/setTheme()`; `acquireWakeLock()/releaseWakeLock()/toggleKeepAwake()`
+      with `WAKE_SUPPORTED = 'wakeLock' in navigator` feature-detection;
+      `syncSettingsUI()`, `openSettings()/closeSettings()`.
+    - Init: `applyTheme()` + `syncSettingsUI()` + acquire wake lock if enabled +
+      `visibilitychange` listener that re-acquires the lock when the page becomes
+      visible AND `keepAwake` is on.
+- Worker verification (gym open / gym closed):
+  - GYM CLOSED: Settings reachable via header gear; toggling theme to Light recolors
+    `#log`/history/stats/modals/FAB via the shared CSS vars; persists across reload
+    (head script applies before paint → no dark flash); Dark restores. Verified by
+    code trace + a node simulation of loadSettings/saveSettings/applyTheme/setTheme:
+    defaults {theme:dark,keepAwake:false}; setTheme('light') sets attr + persists
+    `{"theme":"light",…}`; setTheme('dark') removes attr + persists; reload of a
+    persisted `{light,keepAwake:true}` loads back correctly.
+  - GYM OPEN: gym mode CSS (`#gymOverlay` and children) uses hardcoded near-black
+    `#020408` / brand `#6C63FF` etc. — grep confirms NO `var(--bg/--surface/--card/
+    --text/--border)` inside the gym block, so switching to light theme leaves gym
+    mode dark/high-contrast and fully functional (set-done, rest timer, pips, exit
+    all unaffected). Theme attr lives on `documentElement`; gym overlay simply doesn't
+    consume the themed vars. Locked decision (gym always-dark) upheld.
+- WAKE LOCK CAVEAT (observed/known): Screen Wake Lock requires a secure context.
+  On the preview `http://localhost:4000` it IS a secure context, so the toggle is
+  enabled and `navigator.wakeLock.request('screen')` is expected to succeed (could
+  not click in a real browser in this env — no headless Chrome — so acquisition was
+  validated by code trace + node simulation of acquire/release/re-acquire, not a live
+  grant). On non-secure origins or unsupported browsers, `WAKE_SUPPORTED` is false →
+  the toggle is disabled and the description shows a "needs HTTPS or localhost" note;
+  `request()` rejections are caught and leave state consistent. The OS may also drop
+  the lock on low battery; the `release` event handler resets `wakeLock=null` so a
+  later visibilitychange can re-acquire.
 - Auditor findings: —
+- NOTE for auditor: (1) confirm in a real browser that Light theme is fully readable
+  across every surface and that there is genuinely no dark flash on reload; (2) live-
+  verify wakeLock actually grants on localhost and releases on toggle-off; (3) re-confirm
+  gym mode stays dark when theme is switched WHILE gym mode is open.
 
 ### Step 2 — Saved plans on home, idle state (F2)
 - Status: not started
