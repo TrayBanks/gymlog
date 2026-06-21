@@ -43,7 +43,7 @@ required state channels. If they disagree, STOP and report.
 | Step | Feature | Status |
 |------|---------|--------|
 | 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | ✅ verified |
-| 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | in progress |
+| 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | auditing |
 | 3 | F3 — Persistent pinned workout timer (both modes) | not started |
 | 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | not started |
 | 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | not started |
@@ -164,9 +164,79 @@ Order rationale:
   gym mode stays dark when theme is switched WHILE gym mode is open.
 
 ### Step 2 — Saved plans on home, idle state (F2)
-- Status: in progress
-- Worker verification (gym open / gym closed): —
+- Status: auditing
+- Commits:
+  - `d71b79f` [step 2] render saved plans on home idle view; remove plans list from paste modal
+  - `4b891f6` [step 2] bump sw cache to v7
+- PASTE-MODAL DECISION: **REMOVED** the saved-plans block from the paste modal
+  (the recommended cleaner option). Plans now live in exactly one place — home.
+  The paste modal keeps only: intro text + example + textarea + Load Workout /
+  Save Plan / Cancel buttons + the multi-day day-picker area. No empty/leftover
+  saved-plans container remains in the modal.
+- Diff summary (15 insertions / 17 deletions in index.html; sw.js +1/-1):
+  - `index.html`:
+    - NEW `#homePlansSection.plans-section` (with `#homePlansList`) placed inside
+      `<div id="log">`, ABOVE `#noWorkout` (`index.html:379-382`), `display:none`
+      by default. Reuses the EXISTING `.plans-section` / `.plans-section-header` /
+      `.plan-item` CSS (all `var(--…)` driven → theme-correct in light & dark; no
+      hardcoded colors added).
+    - REMOVED the nested `#savedPlansSection` block (header + `#savedPlansList` +
+      `<hr class="modal-divider">`) from `#pasteModal`.
+    - RENAMED `renderPlansInModal()` → `renderHomePlans()`; repointed to
+      `#homePlansSection`/`#homePlansList`; changed the guard from
+      `plans.length===0` to **`current || plans.length===0`** so it hides during an
+      active workout AND when no plans exist. Card markup (Load + 🗑 delete, name,
+      meta) unchanged — same `.plan-item` template, same `loadPlan(id)` /
+      `deletePlan(id)`.
+    - `renderActive()` now calls `renderHomePlans()` at the top (before the
+      `!current` early-return) so EVERY state transition re-evaluates plan
+      visibility (start/finish/cancel workout, add/remove set, load-from-paste).
+    - `loadPlan()` multi-day branch: replaced the now-defunct
+      `#savedPlansSection` hide with `pasteModal.classList.add('open')` so a
+      multi-day plan loaded FROM HOME opens the modal that hosts the day-picker
+      (previously the modal was already open because plans lived inside it).
+    - Removed the `renderPlansInModal()` calls from `openPasteModal()` and
+      `backToPasteInput()` (nothing to render in the modal anymore) and the
+      stale `#savedPlansSection` hide from `showDayPicker()` and the
+      `renderPlansInModal()` call from the `loadWorkoutFromPaste()` error branch.
+    - `savePlan()` / `deletePlan()` now call `renderHomePlans()` (so a newly
+      saved plan is on home the moment the modal closes; a deletion updates home
+      and hides the section at zero).
+  - `sw.js`: `CACHE_NAME` `gymlog-v6` → `gymlog-v7`.
+- Verification (no headless browser in env — rigorous code trace + node simulation
+  of the visibility predicate and a syntax-parse of both inline `<script>` blocks;
+  preview server on :4000 confirmed serving the new code, `homePlansSection`
+  present / `savedPlansSection` absent, sw `gymlog-v7`):
+  - Visibility predicate `current||plans.length===0 ? hide : show` simulated for all
+    4 states → idle+plans=SHOWN, idle+no-plans=HIDDEN, active+plans=HIDDEN,
+    active+no-plans=HIDDEN. Matches the locked decision exactly.
+  - Item-3 scenarios (all traced through `renderActive`→`renderHomePlans`):
+    Idle+plans → visible on home ✓. Idle+no-plans → section hidden, no clutter ✓.
+    Active workout → hidden ✓. Save new plan via modal (idle) → `renderHomePlans`
+    populates section behind modal; visible after close ✓. Delete from home →
+    list re-renders; hits zero → section hides ✓. Load from home: single-day →
+    `loadWorkoutFromPaste` starts workout (sets `current`, `renderActive` hides
+    plans) ✓; multi-day → opens paste modal + `showDayPicker` → `pickDay` →
+    `loadWorkoutFromPaste` ✓.
+  - GYM CLOSED + idle → plans on home (predicate SHOWN). PASS.
+  - GYM OPEN chain: gym mode only opens with an active workout, at which point
+    `current` is set so home plans are ALREADY hidden. `openGymMode`/`closeGymMode`
+    never touch `#homePlansSection`; `closeGymMode` calls `renderActive` (still
+    active → stays hidden). `finishWorkout`/`cancelWorkout` both `closeGymMode()`
+    if the overlay is open, null `current`, then `renderActive` → plans reappear.
+    No plan list bleeds into the active or gym overlay views. PASS (both modes).
+  - Both inline script blocks parse via `new Function()`; no stale references to
+    `renderPlansInModal`/`savedPlansSection`/`savedPlansList` remain (grep clean).
 - Auditor findings: —
+- NOTE for auditor: scrutinize (1) the MULTI-DAY day-picker path when a multi-day
+  plan is loaded FROM HOME — `loadPlan` now force-opens `#pasteModal` before
+  `showDayPicker`; verify the modal opens cleanly, the picker renders, Back/Cancel
+  reset correctly, and a subsequent FAB `openPasteModal` still shows the input
+  area (it resets both areas). (2) The idle↔active show/hide transition relies
+  solely on `renderActive` calling `renderHomePlans`; confirm no path mutates
+  `current` or workout content without going through `renderActive`. (3) Confirm
+  in a real browser the home plans render correctly in BOTH light and dark themes
+  (CSS is shared `var(--…)`, unchanged, but live paint not observed here).
 
 ### Step 3 — Persistent pinned workout timer (F3)
 - Status: not started
