@@ -227,7 +227,56 @@ Order rationale:
     No plan list bleeds into the active or gym overlay views. PASS (both modes).
   - Both inline script blocks parse via `new Function()`; no stale references to
     `renderPlansInModal`/`savedPlansSection`/`savedPlansList` remain (grep clean).
-- Auditor findings: —
+- Auditor findings: PASS — Plans correctly moved to the idle home state only; zero dangling
+  refs to the removed modal section; every `current` mutation re-renders home plans; both
+  day-picker entry points work; diff is tightly scoped (14 ins / 16 del in index.html).
+  Confirmed:
+  - DANGLING-REF GREP (highest risk): ZERO matches for `savedPlansSection` /
+    `savedPlansList` / `renderPlansInModal` anywhere in index.html. All five old call
+    sites (`openPasteModal`, `backToPasteInput`, `showDayPicker`, `loadPlan` multi-day,
+    `loadWorkoutFromPaste` error branch) are clean — no `getElementById('savedPlansSection')`
+    survives, so no null-`.style` throw. New IDs `homePlansSection`/`homePlansList` and
+    `renderHomePlans()` resolve consistently (`:379-382`, `:762`, `:1149`, `:1157`, `:1175-1177`).
+  - Idle-only visibility predicate (`:1179`): `if (current || plans.length===0) hide; else show`.
+    Node-simulated all 4 states → idle+plans=SHOW, idle+no-plans=HIDE, active+plans=HIDE,
+    active+no-plans=HIDE. Matches the locked decision exactly.
+  - Every `current` mutation funnels through `renderActive()` (which calls `renderHomePlans()`
+    at `:762`, BEFORE the `!current` early-return so it always runs): `startWorkout` (`:690`),
+    `finishWorkout` both branches (`:695`, `:703`), `cancelWorkout` (`:711`),
+    `loadWorkoutFromPaste` (`:1312`), `closeGymMode` (`:859`). No path mutates `current`
+    without re-rendering. Plans hide on start/load and reappear on finish/cancel.
+  - Multi-day day-picker, BOTH entry points:
+    (a) FAB → `openPasteModal` resets areas + opens modal → `submitPaste` multi-day (`:1238-1239`)
+        sets `_pendingDays` + `showDayPicker`. ✓
+    (b) From home → `loadPlan` multi-day (`:1166-1169`) sets `_pendingDays`, force-opens modal
+        via `classList.add('open')` (same overlay that hosts `#dayPickerArea`), then
+        `showDayPicker`. `showDayPicker` (`:1250-1251`) itself hides `#pasteInputArea` / shows
+        `#dayPickerArea`, so the picker renders regardless of prior area state. `pickDay`
+        (`:1264-1266`) → `loadWorkoutFromPaste`. Back (`:1212`) / Cancel (`:1207`) reset cleanly.
+    FAB-after-home: a subsequent `openPasteModal()` resets `#pasteInputArea` visible /
+    `#dayPickerArea` hidden (`:1200-1201`) → input area shown, NOT stuck on the picker. ✓
+  - Save/delete/load wiring: `savePlan` (`:1149`) and `deletePlan` (`:1157`) call
+    `renderHomePlans()` → new plan appears on home after modal closes; delete re-renders and
+    hides section at zero. Single-day load → `loadWorkoutFromPaste` starts workout. All target
+    functions exist and point at the home IDs.
+  - Theme: home plans reuse the existing var-driven CSS — `.plan-item` (`:174`,
+    `--surface`/`--border`/`--radius`), `.plans-section-header` (`:173`, `--muted`),
+    `.plan-meta` (`:177`, `--muted`); delete-button inline color is `var(--danger)` (`:1188`).
+    No hardcoded color added; correct in light & dark.
+  - Regression scope: 14 ins / 16 del in index.html, all within the plans-move; nothing else
+    (timer, gym mode, Step-1 settings/theme, history, stats, export) touched. No function
+    signature or shared global changed — `renderPlansInModal`→`renderHomePlans` was internal,
+    now zero callers reference the old name. Both inline `<script>` blocks parse via
+    `new Function()`.
+  - Cache: `sw.js` `gymlog-v6` → `gymlog-v7` (`4b891f6`); +1/-1, nothing else in sw.js changed.
+  - Preview on :4000 serves HTTP 200, the new code (`homePlansSection` present /
+    `savedPlansSection` absent = 0), and `gymlog-v7`.
+  Non-blocking notes / unverifiable without a live browser (no headless Chrome in env):
+  - Real DOM render of the home plans area (idle) and its light/dark paint — CSS is shared and
+    unchanged, computed-correct, but live paint not observed.
+  - Real modal open/close visuals for the from-home multi-day path (logic + parse verified;
+    actual on-screen open/picker-render/Back-Cancel transitions not clicked live).
+  - These are live-only confirmations, not logic defects → PASS-with-notes.
 - NOTE for auditor: scrutinize (1) the MULTI-DAY day-picker path when a multi-day
   plan is loaded FROM HOME — `loadPlan` now force-opens `#pasteModal` before
   `showDayPicker`; verify the modal opens cleanly, the picker renders, Back/Cancel
