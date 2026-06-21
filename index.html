@@ -117,6 +117,7 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .exercise-block.warmup-block{border-color:rgba(245,158,11,.3);background:var(--warmup-bg)}
 .set-header{display:grid;grid-template-columns:28px 1fr 1fr 1fr 32px;gap:6px;margin-bottom:6px}
 .set-header span{font-size:.68rem;color:var(--muted);text-transform:uppercase;text-align:center;font-weight:600}
+.last-perf{font-size:.72rem;color:var(--muted);margin:0 0 8px;line-height:1.5;font-variant-numeric:tabular-nums}
 .exercise-actions{display:flex;gap:8px;margin-top:8px}
 
 /* Section labels */
@@ -266,6 +267,10 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
   letter-spacing:.5px;
 }
 .gym-target strong{color:#ccc}
+/* Last-time reference in gym mode — hardcoded palette (gym is always-dark, never themed vars).
+   .gym-target keeps margin-bottom:28px; this sits below it, glanceable and small. */
+.gym-last-perf{font-size:clamp(.74rem,2.8vw,.95rem);color:#888;text-align:center;margin:-16px 0 26px;letter-spacing:.3px;font-variant-numeric:tabular-nums}
+.gym-last-perf span{color:#888}
 
 /* Done button */
 .gym-done-btn{
@@ -823,6 +828,54 @@ function renderActive() {
   cont.innerHTML = html;
 }
 
+/* ── Last-performance memory (F5) ─────────────────────
+   Scan completed `workouts` (newest-first) for the most recent
+   exercise whose name matches `name` (case-insensitive, trimmed)
+   and that has at least one set. The active `current` workout is
+   NOT in `workouts` (added on finish), so no self-match. Cheap
+   O(history) loop; called during render. Returns {sets,date,
+   hasDone} or null. */
+function lastPerformance(name) {
+  if (!name) return null;
+  var key = String(name).trim().toLowerCase();
+  if (!key) return null;
+  for (var wi = 0; wi < workouts.length; wi++) {
+    var w = workouts[wi];
+    if (!w) continue;
+    /* Prefer working sets over warmups when both carry the same name in one workout */
+    var all = (w.exercises || []).concat(w.warmups || []);
+    for (var ei = 0; ei < all.length; ei++) {
+      var e = all[ei];
+      if (!e || !e.name) continue;
+      if (String(e.name).trim().toLowerCase() !== key) continue;
+      var sets = e.sets || [];
+      if (sets.length === 0) continue; /* skip empty-sets occurrence, keep looking */
+      var hasDone = sets.some(function(s) { return s && s._done; });
+      return { sets: sets, date: w.date, hasDone: hasDone };
+    }
+  }
+  return null;
+}
+
+/* Build the inner HTML of a "Last: …" reference line.
+   `themed` → normal mode (uses var(--muted) via the wrapper class).
+   When the historical exercise carries _done info (hasDone), mark
+   completed sets normally and de-emphasize/strike attempted-but-not
+   -completed ones. When it carries NO _done (legacy data), render
+   every set neutral (no misleading "not completed" stigma). */
+function lastPerfSetsHtml(lp, struckStyle) {
+  return lp.sets.map(function(s) {
+    s = s || {};
+    var w = (s.weight === 0 || s.weight) ? s.weight : '—';
+    var r = (s.reps === 0 || s.reps) ? s.reps : '—';
+    var txt = esc(w + '×' + r);
+    if (lp.hasDone && !s._done) {
+      return '<span style="' + struckStyle + '">' + txt + '</span>';
+    }
+    return '<span>' + txt + '</span>';
+  }).join(' · ');
+}
+
 function renderExerciseBlock(ex, ei, section, isWarmup) {
   var sec = isWarmup ? 'warmup' : 'exercise';
   var blockClass = 'exercise-block' + (isWarmup ? ' warmup-block' : '');
@@ -832,8 +885,14 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
     '<h4 style="font-size:.92rem">' + esc(ex.name) +
     (ex._notes ? '<span style="display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px">' + esc(ex._notes) + '</span>' : '') +
     '</h4>' +
-    '<button class="remove-set" onclick="removeExercise(\'' + sec + '\',' + ei + ')" title="Remove">&#10005;</button></div>' +
-    '<div class="set-header"><span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span></span></div>';
+    '<button class="remove-set" onclick="removeExercise(\'' + sec + '\',' + ei + ')" title="Remove">&#10005;</button></div>';
+  var lp = lastPerformance(ex.name);
+  if (lp) {
+    html += '<div class="last-perf">Last: ' +
+      lastPerfSetsHtml(lp, 'text-decoration:line-through;opacity:.55') +
+      '</div>';
+  }
+  html += '<div class="set-header"><span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span></span></div>';
   ex.sets.forEach(function(s, si) {
     var checkBtn = '<button class="set-check' + (s._done ? ' done' : '') + '" onclick="toggleSetDone(\'' + sec + '\',' + ei + ',' + si + ')" title="' + (s._done ? 'Mark not done' : 'Mark done') + '" aria-pressed="' + (s._done ? 'true' : 'false') + '">' + (s._done ? '&#10003;' : (si + 1)) + '</button>';
     if (s._done) {
@@ -929,6 +988,14 @@ function gymRenderContent() {
     '<div class="gym-set-counter">' + (gymSetIdx + 1) + '</div>' +
     '<div class="gym-set-of">of ' + sets.length + ' sets</div>' +
     '<div class="gym-target"><strong>' + weightTxt + '</strong> &nbsp;&times;&nbsp; <strong>' + repsTxt + '</strong></div>';
+
+  /* Last-time reference (gym hardcoded palette — gym is always-dark) */
+  var gymLp = lastPerformance(ex.name);
+  if (gymLp) {
+    html += '<div class="gym-last-perf">Last: ' +
+      lastPerfSetsHtml(gymLp, 'text-decoration:line-through;color:#444') +
+      '</div>';
+  }
 
   if (allDone) {
     html += '<div class="gym-complete-msg">&#10003; All Sets Complete!</div>';
