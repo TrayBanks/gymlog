@@ -9,6 +9,16 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<script>
+/* Apply saved theme before first paint to avoid a flash of the wrong palette.
+   Default is dark (the :root vars). Only 'light' sets the data-theme attribute. */
+(function(){
+  try {
+    var s = JSON.parse(localStorage.getItem('gymlog_settings') || '{}');
+    if (s && s.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  } catch (e) {}
+})();
+</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
@@ -21,6 +31,15 @@
   --safe-top:env(safe-area-inset-top,0px);
   --safe-bot:env(safe-area-inset-bottom,0px);
 }
+/* Light theme — affects the NORMAL app only; gym mode stays always-dark */
+:root[data-theme="light"]{
+  --bg:#f4f5fa;--surface:#ffffff;--card:#eef0f6;
+  --primary:#6C63FF;--primary-hover:#5b54e6;
+  --text:#1e2433;--muted:#64708a;
+  --danger:#dc2626;--success:#16a34a;--warn:#d97706;
+  --border:#d8dde8;
+  --warmup:#b45309;--warmup-bg:rgba(245,158,11,.12);
+}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-bottom:calc(80px + var(--safe-bot))}
 header{background:var(--surface);padding:16px 20px;padding-top:calc(16px + var(--safe-top));display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
 header h1{font-size:1.3rem;font-weight:800;background:linear-gradient(135deg,#6C63FF,#3B82F6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
@@ -32,6 +51,27 @@ header h1{font-size:1.3rem;font-weight:800;background:linear-gradient(135deg,#6C
 .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
 .btn-sm{padding:6px 14px;font-size:.82rem;min-height:36px}
 .btn-lg{padding:18px 32px;font-size:1.1rem;border-radius:16px;min-height:56px}
+.icon-btn{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:var(--radius);width:38px;height:38px;min-height:38px;font-size:1.15rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s}
+.icon-btn:active{color:var(--text);border-color:var(--primary)}
+
+/* Settings */
+.settings-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border)}
+.settings-row:first-of-type{border-top:none}
+.settings-row .settings-label{font-weight:600;font-size:.95rem}
+.settings-row .settings-desc{font-size:.78rem;color:var(--muted);margin-top:3px;line-height:1.4}
+.settings-row .settings-control{flex-shrink:0}
+/* Toggle switch */
+.switch{position:relative;display:inline-block;width:50px;height:30px}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;inset:0;background:var(--card);border:1px solid var(--border);border-radius:30px;cursor:pointer;transition:all .2s}
+.switch .slider:before{content:"";position:absolute;height:22px;width:22px;left:3px;top:3px;background:var(--muted);border-radius:50%;transition:all .2s}
+.switch input:checked+.slider{background:var(--primary);border-color:var(--primary)}
+.switch input:checked+.slider:before{transform:translateX(20px);background:#fff}
+.switch input:disabled+.slider{opacity:.4;cursor:not-allowed}
+/* Theme segmented control */
+.theme-seg{display:inline-flex;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px;gap:3px}
+.theme-seg button{background:transparent;border:none;color:var(--muted);font-size:.82rem;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;min-height:36px;transition:all .15s}
+.theme-seg button.active{background:var(--primary);color:#fff}
 
 /* Nav tabs */
 nav{display:flex;background:var(--surface);border-bottom:1px solid var(--border)}
@@ -321,7 +361,10 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 
 <header>
 <h1>GymLog</h1>
+<div style="display:flex;align-items:center;gap:8px">
 <button class="btn btn-ghost btn-sm" onclick="exportData()">Export</button>
+<button class="icon-btn" onclick="openSettings()" title="Settings" aria-label="Settings">&#9881;</button>
+</div>
 </header>
 
 <nav>
@@ -373,6 +416,40 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <div style="display:flex;gap:8px">
 <button class="btn btn-primary" style="flex:1" onclick="addExercise()">Add</button>
 <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+</div>
+</div>
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settingsModal" class="modal-overlay">
+<div class="modal">
+<h2>&#9881; Settings</h2>
+<div class="settings-row">
+<div>
+<div class="settings-label">Theme</div>
+<div class="settings-desc">Light or dark for the app. Gym mode stays dark.</div>
+</div>
+<div class="settings-control">
+<div class="theme-seg" id="themeSeg">
+<button type="button" data-theme-val="light" onclick="setTheme('light')">Light</button>
+<button type="button" data-theme-val="dark" onclick="setTheme('dark')">Dark</button>
+</div>
+</div>
+</div>
+<div class="settings-row">
+<div>
+<div class="settings-label">Keep screen awake</div>
+<div class="settings-desc" id="wakeDesc">Prevents the screen from sleeping during workouts.</div>
+</div>
+<div class="settings-control">
+<label class="switch">
+<input type="checkbox" id="keepAwakeToggle" onchange="toggleKeepAwake(this.checked)">
+<span class="slider"></span>
+</label>
+</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:18px">
+<button class="btn btn-ghost" style="flex:1" onclick="closeSettings()">Done</button>
 </div>
 </div>
 </div>
@@ -456,12 +533,17 @@ Supports a single workout <em>or</em> an array of multiple days. Optional <code 
 var DB_KEY = 'gymlog_workouts';
 var EXERCISES_KEY = 'gymlog_exercises';
 var PLANS_KEY = 'gymlog_plans';
+var SETTINGS_KEY = 'gymlog_settings';
 
 var workouts = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
 var knownExercises = JSON.parse(localStorage.getItem(EXERCISES_KEY) ||
   '["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row","Pull Up","Lat Pulldown","Bicep Curl","Tricep Pushdown","Leg Press","Romanian Deadlift","Lateral Raise"]');
 var plans = JSON.parse(localStorage.getItem(PLANS_KEY) || '[]');
 var current = null;
+
+/* Settings (new gymlog_settings key; independent of save()) */
+var settings = loadSettings();
+var wakeLock = null;
 
 /* Timer */
 var timerInterval = null;
@@ -477,6 +559,80 @@ function save() {
   localStorage.setItem(DB_KEY, JSON.stringify(workouts));
   localStorage.setItem(EXERCISES_KEY, JSON.stringify([...new Set(knownExercises)]));
   localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+}
+
+/* ── Settings ───────────────────────────────────── */
+function loadSettings() {
+  var s = {};
+  try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (e) { s = {}; }
+  return {
+    theme: s.theme === 'light' ? 'light' : 'dark',   // default dark
+    keepAwake: s.keepAwake === true                   // default off
+  };
+}
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+/* Theme */
+function applyTheme() {
+  if (settings.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  else document.documentElement.removeAttribute('data-theme');
+}
+function setTheme(theme) {
+  settings.theme = (theme === 'light') ? 'light' : 'dark';
+  saveSettings();
+  applyTheme();
+  syncSettingsUI();
+}
+
+/* Screen Wake Lock — needs a secure context (HTTPS or localhost). */
+var WAKE_SUPPORTED = ('wakeLock' in navigator);
+function acquireWakeLock() {
+  if (!WAKE_SUPPORTED) return;
+  if (wakeLock) return;
+  navigator.wakeLock.request('screen').then(function(lock) {
+    wakeLock = lock;
+    wakeLock.addEventListener('release', function() { wakeLock = null; });
+  }).catch(function() {
+    /* Rejected (e.g. tab not visible, low battery, insecure context). Leave toggle as user set it. */
+    wakeLock = null;
+  });
+}
+function releaseWakeLock() {
+  if (wakeLock) {
+    try { wakeLock.release(); } catch (e) {}
+    wakeLock = null;
+  }
+}
+function toggleKeepAwake(on) {
+  settings.keepAwake = !!on;
+  saveSettings();
+  if (settings.keepAwake) acquireWakeLock();
+  else releaseWakeLock();
+}
+
+function syncSettingsUI() {
+  document.querySelectorAll('#themeSeg button').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-theme-val') === settings.theme);
+  });
+  var toggle = document.getElementById('keepAwakeToggle');
+  if (toggle) {
+    toggle.checked = settings.keepAwake;
+    toggle.disabled = !WAKE_SUPPORTED;
+  }
+  if (!WAKE_SUPPORTED) {
+    var d = document.getElementById('wakeDesc');
+    if (d) d.textContent = 'Not supported in this browser/context (needs HTTPS or localhost).';
+  }
+}
+
+function openSettings() {
+  syncSettingsUI();
+  document.getElementById('settingsModal').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('open');
 }
 
 /* ── Timer ──────────────────────────────────────── */
@@ -1162,6 +1318,15 @@ function loadWorkoutFromPaste(data) {
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
 /* ── Init ───────────────────────────────────────── */
+applyTheme();              // head script applies before paint; this keeps DOM in sync
+syncSettingsUI();
+if (settings.keepAwake) acquireWakeLock();
+
+/* Wake Lock is auto-released when the tab is hidden — re-acquire on return if enabled. */
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible' && settings.keepAwake) acquireWakeLock();
+});
+
 renderActive();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function() {});
 </script>
