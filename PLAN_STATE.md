@@ -43,8 +43,8 @@ required state channels. If they disagree, STOP and report.
 | Step | Feature | Status |
 |------|---------|--------|
 | 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | ✅ verified |
-| 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | auditing |
-| 3 | F3 — Persistent pinned workout timer (both modes) | not started |
+| 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | ✅ verified |
+| 3 | F3 — Persistent pinned workout timer (both modes) | in progress |
 | 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | not started |
 | 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | not started |
 
@@ -164,7 +164,8 @@ Order rationale:
   gym mode stays dark when theme is switched WHILE gym mode is open.
 
 ### Step 2 — Saved plans on home, idle state (F2)
-- Status: auditing
+- Status: ✅ VERIFIED by orchestrator (gate passed). Outstanding: live render of the home plans
+  area + the from-home multi-day day-picker open/close visuals — deferred to final preview pass.
 - Commits:
   - `d71b79f` [step 2] render saved plans on home idle view; remove plans list from paste modal
   - `4b891f6` [step 2] bump sw cache to v7
@@ -288,7 +289,7 @@ Order rationale:
   (CSS is shared `var(--…)`, unchanged, but live paint not observed here).
 
 ### Step 3 — Persistent pinned workout timer (F3)
-- Status: not started
+- Status: in progress
 - Worker verification (gym open / gym closed): —
 - Auditor findings: —
 
