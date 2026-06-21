@@ -44,8 +44,8 @@ required state channels. If they disagree, STOP and report.
 |------|---------|--------|
 | 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | ✅ verified |
 | 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | ✅ verified |
-| 3 | F3 — Persistent pinned workout timer (both modes) | auditing |
-| 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | not started |
+| 3 | F3 — Persistent pinned workout timer (both modes) | ✅ verified |
+| 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | in progress |
 | 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | not started |
 
 Order rationale:
@@ -289,7 +289,10 @@ Order rationale:
   (CSS is shared `var(--…)`, unchanged, but live paint not observed here).
 
 ### Step 3 — Persistent pinned workout timer (F3)
-- Status: auditing
+- Status: ✅ VERIFIED by orchestrator (gate passed). Non-blocking note: 71px header-offset is
+  exact at normal font sizes; above ~150% accessibility zoom the timer tucks slightly UNDER the
+  header (safe direction, z-index 5<10). A measured/JS offset is an optional later hardening, not
+  a blocker. Live scroll-catch + flush alignment deferred to final preview pass.
 - Commits:
   - `2f58ea2` [step 3] pin active workout timer with sticky positioning
   - `f9bb199` [step 3] bump sw cache to v8
@@ -431,7 +434,7 @@ Order rationale:
     serves HTTP 200, the sticky rule, and `gymlog-v8`.
 
 ### Step 4 — Set completion check-off (F4)
-- Status: not started
+- Status: in progress
 - Worker verification (gym open / gym closed): —
 - Auditor findings: —
 
