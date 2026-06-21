@@ -362,7 +362,73 @@ Order rationale:
     → `renderActive` re-emits the same sticky `.workout-timer`. PASS (both modes), no regression.
   - Served-code check: preview on :4000 serves the working tree → confirmed serving
     `position:sticky;top:calc(71px + var(--safe-top))` in index.html and `gymlog-v8` in sw.js.
-- Auditor findings: —
+- Auditor findings: PASS — Sticky timer is correct at default font size; diff is one CSS rule
+  (`.workout-timer`, `index.html:164`) + cache bump; ancestor chain has NO overflow so sticky
+  WILL catch; safe-area math is flush (no double-count); stacking, opacity, gym isolation all
+  correct. ONE non-blocking robustness note on the hardcoded 71px (fragile only above ~150%
+  accessibility font zoom). No blocking issues.
+  Confirmed:
+  1. **71px offset — correct NOW.** Header (`index.html:44`) is `display:flex;align-items:center`,
+     `padding:16px 20px; padding-top:calc(16px+safe-top)`, `border-bottom:1px`. Children: `<h1>`
+     (`:367`, font 1.3rem ≈ 25px line box) and a div holding Export `.btn-sm` (`:52`,
+     min-height:36px) + gear `.icon-btn` (`:54`, height:38px + min-height:38px). Tallest content =
+     gear 38px. Header rendered height (excl inset) = 16+38+16+1 = **71px EXACT** (verified by
+     node math at default 16px root). The gear's 38px > h1's ~25px line box > Export's 36px, so
+     the gear genuinely dominates. Offset is correct; timer lands flush, no overlap, no gap.
+  2. **Safe-area — NO double-count, no off-by-safe-top.** Header is sticky `top:0`; its rendered
+     bottom edge = `(16+safe-top)+38+16+1 = 71+safe-top` from the viewport top. Timer
+     `top:calc(71px+safe-top)` catches its top edge at exactly `71+safe-top`. Node-modelled
+     safe-top ∈ {0,24,47,59} → gap = 0px FLUSH in every case. Worker's "two different boxes, not
+     a double-count" claim is CORRECT.
+  3. **Stacking — correct.** Full z-index inventory: header=10 (`:44`), FAB-group=20 (`:118`),
+     modal-overlay=50 (`:125`), gym overlay=100 (`:191`), timer=**5** (`:164`). Timer 5 < header
+     10 → tucks UNDER the header (never over). Nothing else inside `#log`/`#activeWorkout` flow is
+     positioned or has a competing z-index (the only sticky/fixed elements are header, FAB,
+     modal-overlay, gym overlay, and the timer itself). FAB/modals/gym all sit above as intended.
+  4. **Opaque bg — no content bleed.** `.workout-timer` keeps `background:var(--surface)` =
+     `#1e293b` dark / `#ffffff` light (`:25`,`:36`) — both fully opaque hex, no alpha — plus
+     `1px solid var(--border)`. Scrolled exercise rows are fully covered. Content sits in the same
+     16px-padded `.view` column (`:82`), so nothing renders in side gutters.
+  5. **Sticky WILL work — ancestor chain is clean (the real failure mode, checked).** Chain:
+     `.workout-timer` (direct child of `#activeWorkout`, confirmed in `renderActive` markup
+     `:783`) → `#activeWorkout` → `#log.view` → `body`. There is NO CSS rule for `#activeWorkout`
+     or `#log` at all; `.view` (`:82`) is only `display:none;padding:16px` / `.view.active{display:block}`;
+     `body` (`:43`) is only `min-height:100dvh; padding-bottom`. None set `overflow`, `height`,
+     `transform`, or `contain`. The scroll happens on body/viewport, so sticky catches relative to
+     the viewport scroll. **Sticky is not silently broken.**
+  6. **Gym mode untouched.** Gym CSS block (`:184-360`) and gym JS are NOT in the diff
+     (`git diff b47a75d..f9bb199` touches only the `.workout-timer` rule + comment + sw.js cache).
+     `.gym-header` (flex-shrink:0) above `.gym-main` (`flex:1;overflow-y:auto`, `:218`) is intact →
+     gym timer stays pinned in its own scroll context, unchanged. `.workout-timer` does not exist
+     in the gym overlay (gym renders its own markup). Gym-open and gym-closed both unaffected.
+  7. **Regression scope — surgical.** Diff = 4 ins / 2 del in index.html (one CSS rule + comment)
+     + sw.js +1/-1. Nothing touches Step 1 (settings/theme), Step 2 (home plans), paste, history,
+     stats, export, the `startTimer()` interval, or the FAB. No JS change; `#workoutTimer` markup
+     and its interval update untouched.
+  8. **Small screen (≤380px) — fine.** `@media(max-width:380px)` (`:347-353`) overrides only
+     `.workout-timer{padding:10px 12px}` (`:351`); it does NOT touch position/top/z-index, so
+     sticky still applies. Reduced padding shrinks the CARD, not the header (the header offset is
+     unchanged by this media query), so the 71px assumption still holds on Fold 5 cover.
+  Non-blocking robustness note (71px fragility — judged NON-BLOCKING):
+  - The offset is a hardcoded px derived from the header. It is correct now and far less brittle
+    than it looks, because every dominant header dimension (gear 38px, 16px paddings, 1px border,
+    Export 36px) is fixed px and does NOT scale with rem. Only the h1 (1.3rem) scales, and it
+    overtakes the 38px gear only above root ≈ 24.4px (≈152% font zoom) — node-modelled root ∈
+    {16,18,20,22,24} all stay 71px flush. Above ~150% zoom the timer would tuck a few px UNDER
+    the header (partially hidden) — but z-index:5<10 means the safe direction (under, not over),
+    and content stays readable. A long title doesn't wrap (single flex child, no width cap); it
+    would overflow horizontally, a pre-existing header concern, not introduced here.
+  - Recommendation to orchestrator: ACCEPT as-is for merge. A more robust offset (e.g. JS that
+    measures `header.offsetHeight` into a CSS var, or making the header a known fixed height) is a
+    nice-to-have, not required — the current value is correct across all realistic device/font
+    settings. Optionally request the hardening as a follow-up, not a blocker.
+  Unverifiable without a live browser (no headless Chrome in env):
+  - The actual sticky CATCH behavior on real scroll and the exact flush pixel alignment across
+    real devices/insets (math says flush; not observed live).
+  - Real rendering of the pinned bar over scrolling content (opacity is provably solid; live
+    paint not seen).
+  - These are live-only confirmations, not logic defects → PASS-with-notes. Preview on :4000
+    serves HTTP 200, the sticky rule, and `gymlog-v8`.
 
 ### Step 4 — Set completion check-off (F4)
 - Status: not started
