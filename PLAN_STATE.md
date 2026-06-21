@@ -45,8 +45,8 @@ required state channels. If they disagree, STOP and report.
 | 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | ✅ verified |
 | 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | ✅ verified |
 | 3 | F3 — Persistent pinned workout timer (both modes) | ✅ verified |
-| 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | auditing |
-| 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | not started |
+| 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | ✅ verified |
+| 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | in progress |
 
 Order rationale:
 - **Step 1 first** because the theme system refactors global `:root` CSS vars; landing it first
@@ -434,7 +434,9 @@ Order rationale:
     serves HTTP 200, the sticky rule, and `gymlog-v8`.
 
 ### Step 4 — Set completion check-off (F4)
-- Status: auditing
+- Status: ✅ VERIFIED by orchestrator (gate passed). Non-blocking note: condensed 3-col done row
+  doesn't column-align under the 5-col `.set-header` (independent grids, cosmetic only). Live tap +
+  rendered condensed height + 373px grid render deferred to final preview pass.
 - Commits:
   - `86469cb` [step 4] add set check-off control writing `_done` with condensed strikethrough done styling
   - `4cb3f12` [step 4] bump sw cache to v9
@@ -590,7 +592,7 @@ Order rationale:
   live: actual tap, real condensed height, real 373px grid render, header-vs-done-row visual alignment.
 
 ### Step 5 — Last-weight/sets memory (F5)
-- Status: not started
+- Status: in progress
 - Worker verification (gym open / gym closed): —
 - Auditor findings: —
 
