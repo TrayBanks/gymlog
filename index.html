@@ -376,6 +376,10 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <!-- LOG VIEW -->
 <div id="log" class="view active">
 <div id="activeWorkout"></div>
+<div id="homePlansSection" class="plans-section" style="display:none">
+<div class="plans-section-header">&#128190; Saved Plans</div>
+<div id="homePlansList"></div>
+</div>
 <div id="noWorkout" class="empty-state">
   <div class="icon">&#127947;&#65039;</div>
   <p>Ready to train?</p>
@@ -458,11 +462,6 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <div id="pasteModal" class="modal-overlay">
 <div class="modal">
 <h2>&#128203; Paste from AI</h2>
-<div id="savedPlansSection" class="plans-section" style="display:none">
-<div class="plans-section-header">&#128190; Saved Plans</div>
-<div id="savedPlansList"></div>
-<hr class="modal-divider">
-</div>
 <p class="paste-info">
 Paste a workout plan in JSON format from <strong>Claude</strong>, <strong>ChatGPT</strong>, or any AI.<br><br>
 Supports a single workout <em>or</em> an array of multiple days. Optional <code style="background:var(--card);padding:2px 6px;border-radius:4px;font-size:.78rem">warmups</code> adds a warm-up section.
@@ -760,6 +759,7 @@ function removeExercise(section, ei) {
 function renderActive() {
   var cont = document.getElementById('activeWorkout');
   var empty = document.getElementById('noWorkout');
+  renderHomePlans();  // idle + plans → show on home; active workout → hidden
   if (!current) { cont.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
 
@@ -1146,7 +1146,7 @@ function savePlan() {
     : (data.exercises || []).length;
   plans.unshift({ id: Date.now(), name: name, data: data, days: dayCount, exercises: exCount });
   save();
-  renderPlansInModal();
+  renderHomePlans();
   document.getElementById('pasteInput').value = '';
 }
 
@@ -1154,7 +1154,7 @@ function deletePlan(id) {
   if (!confirm('Delete this plan?')) return;
   plans = plans.filter(function(p) { return p.id !== id; });
   save();
-  renderPlansInModal();
+  renderHomePlans();
 }
 
 function loadPlan(id) {
@@ -1164,17 +1164,19 @@ function loadPlan(id) {
   if (Array.isArray(data)) {
     if (data.length === 1) { loadWorkoutFromPaste(data[0]); return; }
     _pendingDays = data;
-    document.getElementById('savedPlansSection').style.display = 'none';
+    // Multi-day: open the paste modal so the day-picker has somewhere to render.
+    document.getElementById('pasteModal').classList.add('open');
     showDayPicker(data);
   } else {
     loadWorkoutFromPaste(data);
   }
 }
 
-function renderPlansInModal() {
-  var section = document.getElementById('savedPlansSection');
-  var list = document.getElementById('savedPlansList');
-  if (plans.length === 0) { section.style.display = 'none'; return; }
+function renderHomePlans() {
+  var section = document.getElementById('homePlansSection');
+  var list = document.getElementById('homePlansList');
+  // Only show on the idle/no-workout home state: no active workout AND plans exist.
+  if (current || plans.length === 0) { section.style.display = 'none'; return; }
   section.style.display = '';
   list.innerHTML = plans.map(function(p) {
     var meta = p.days > 1 ? p.days + ' days' : (p.exercises ? p.exercises + ' exercises' : '');
@@ -1199,7 +1201,6 @@ function openPasteModal() {
   document.getElementById('dayPickerArea').style.display = 'none';
   document.getElementById('pasteModal').classList.add('open');
   _pendingDays = null;
-  renderPlansInModal();
   setTimeout(function() { document.getElementById('pasteInput').focus(); }, 150);
 }
 
@@ -1211,7 +1212,6 @@ function closePasteModal() {
 function backToPasteInput() {
   document.getElementById('pasteInputArea').style.display = '';
   document.getElementById('dayPickerArea').style.display = 'none';
-  renderPlansInModal();
   _pendingDays = null;
 }
 
@@ -1248,7 +1248,6 @@ function submitPaste() {
 
 function showDayPicker(days) {
   document.getElementById('pasteInputArea').style.display = 'none';
-  document.getElementById('savedPlansSection').style.display = 'none';
   document.getElementById('dayPickerArea').style.display = '';
   var html = '';
   days.forEach(function(day, idx) {
@@ -1294,7 +1293,6 @@ function loadWorkoutFromPaste(data) {
     errEl.className = 'paste-error show';
     document.getElementById('pasteInputArea').style.display = '';
     document.getElementById('dayPickerArea').style.display = 'none';
-    renderPlansInModal();
     return;
   }
 
