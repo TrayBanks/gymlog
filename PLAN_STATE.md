@@ -42,7 +42,7 @@ required state channels. If they disagree, STOP and report.
 
 | Step | Feature | Status |
 |------|---------|--------|
-| 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | auditing |
+| 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | audited — PASS |
 | 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | not started |
 | 3 | F3 — Persistent pinned workout timer (both modes) | not started |
 | 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | not started |
@@ -64,7 +64,7 @@ Order rationale:
 
 ## Step Log
 ### Step 1 — Settings panel (F1)
-- Status: auditing
+- Status: audited — PASS (pending real-browser preview check)
 - Commits:
   - `7b91710` [step 1] add settings modal with theme + wake lock
   - `f7ed8e4` [step 1] bump sw cache to v6
@@ -112,7 +112,49 @@ Order rationale:
   `request()` rejections are caught and leave state consistent. The OS may also drop
   the lock on low battery; the `release` event handler resets `wakeLock=null` so a
   later visibilitychange can re-acquire.
-- Auditor findings: —
+- Auditor findings: PASS — Theme + wake lock are correct, additive-only (165 insertions / 0 deletions in index.html), gym mode isolation upheld, cache bumped. No blocking issues; outstanding items are live-browser checks only.
+  Confirmed:
+  - Theme completeness: light block (`index.html:34-42`) overrides every surface var
+    consumed by the normal app — body/bg (`:43`), header (`:44`), nav (`:77-79`),
+    `.workout-card` (`:85`), `.exercise-block` (`:105`), `.modal-overlay`/`.modal`
+    (`:125-128`, modal bg=`var(--bg)`), `.stat-box` (`:132`), form inputs (`:95,101`),
+    `.fab` (`:119`), `.plan-item` (`:174`), `.day-picker-item` (`:154`), `.workout-timer`
+    (`:160`). No normal-app element hardcodes a dark surface/text color. The only
+    `color:#fff` outside gym (`:49,50,74,119`) sits on colored (`--primary`/`--danger`)
+    backgrounds → correct in both themes.
+  - Contrast (computed WCAG): text `#1e2433` on bg/surface/card = 14.2/15.5/13.6:1 (AAA);
+    muted `#64708a` = 4.36–4.97:1 (AA); primary `#6C63FF` on white & white-on-primary =
+    4.32:1 (AA); warmup `#b45309` on bg = 4.61:1 (AA). Nothing unreadable.
+  - No-flash: head inline script (`:12-21`) runs before `<style>`/body, sets
+    `data-theme="light"` from `gymlog_settings`. Robust to absent/empty/corrupt/wrong-type
+    key (try/catch + `s && s.theme==='light'` short-circuit) — node-simulated all cases →
+    default dark, never throws. `--radius` correctly inherits from base `:root` (not
+    redefined in light block).
+  - Wake Lock LOGIC sound: `WAKE_SUPPORTED='wakeLock' in navigator` (`:586`); acquire on
+    enable & release on disable (`toggleKeepAwake`, `:617`); re-acquire on
+    `visibilitychange` when visible AND `keepAwake` (`:1328`); `request()` rejection
+    `.catch`'d → state stays consistent (`:594`); `release` event resets `wakeLock=null`
+    so a later re-acquire works; unsupported → toggle disabled + explanatory note
+    (`syncSettingsUI`, `:599-608`). Cannot live-grant in this env (no headless browser).
+  - State isolation: `saveSettings()` writes ONLY `gymlog_settings`; `save()` (`:558-562`)
+    writes ONLY workouts/exercises/plans. No overlap → settings cannot clobber workout data.
+  - Gym parity (LOCKED always-dark): gym CSS block (`:184-356`) and gym render JS
+    (`:865`) use ONLY hardcoded colors (`#020408`, `#6C63FF`, `#333`, etc.) — grep
+    confirms ZERO `var(--bg/--surface/--card/--text/--border/--muted)` in the gym range.
+    Theme attr lives on `documentElement`; gym overlay consumes none of the themed vars,
+    so switching to light cannot alter gym mode whether it is open or closed.
+  - Regression: diff is 165 insertions / 0 deletions in index.html (only removed line in
+    the whole change is the sw.js CACHE_NAME). No existing function, signature, or shared
+    global modified; header change is additive markup. Start-workout/timer/paste/plans/
+    gym/history/stats/export untouched.
+  - Cache: `sw.js` `gymlog-v5` → `gymlog-v6` (`f7ed8e4`); nothing else in sw.js changed.
+    Preview on :4000 serves the new code (settingsModal present) and v6.
+  Non-blocking notes / what a node sim CANNOT prove (left for real-browser check at preview):
+  - Live visual rendering/contrast under an actual light-theme paint (computed ratios are
+    strong, but real device rendering unverified).
+  - Real "no dark flash" on a cold reload (logic guarantees pre-paint apply; not observed live).
+  - Real `navigator.wakeLock.request('screen')` GRANT on localhost and RELEASE on toggle-off
+    / re-acquire on tab-return — logic is correct by read; no headless browser to click it.
 - NOTE for auditor: (1) confirm in a real browser that Light theme is fully readable
   across every surface and that there is genuinely no dark flash on reload; (2) live-
   verify wakeLock actually grants on localhost and releases on toggle-off; (3) re-confirm
