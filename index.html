@@ -26,6 +26,7 @@
   --primary:#6C63FF;--primary-hover:#5b54e6;
   --text:#f1f5f9;--muted:#94a3b8;
   --danger:#ef4444;--success:#22c55e;--warn:#f59e0b;
+  --success-bg:rgba(34,197,94,.14);
   --border:#475569;--radius:12px;
   --warmup:#f59e0b;--warmup-bg:rgba(245,158,11,.08);
   --safe-top:env(safe-area-inset-top,0px);
@@ -37,6 +38,7 @@
   --primary:#6C63FF;--primary-hover:#5b54e6;
   --text:#1e2433;--muted:#64708a;
   --danger:#dc2626;--success:#16a34a;--warn:#d97706;
+  --success-bg:rgba(22,163,74,.12);
   --border:#d8dde8;
   --warmup:#b45309;--warmup-bg:rgba(245,158,11,.12);
 }
@@ -101,6 +103,14 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .set-row input{padding:8px 4px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);text-align:center;font-size:.9rem;min-height:40px;width:100%}
 .set-row input:focus{outline:none;border-color:var(--primary)}
 .remove-set{background:none;border:none;color:var(--danger);cursor:pointer;font-size:1.1rem;padding:4px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center}
+/* Set check-off control: repurposes the leading 28px "#" cell into a tap toggle for _done */
+.set-check{background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:.82rem;font-weight:600;padding:0;width:100%;min-height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;line-height:1}
+.set-check.done{border-color:var(--success);color:var(--success);background:var(--success-bg)}
+/* Condensed "done" row: a compact summary line, less vertical height than an editable row */
+.set-row.done{grid-template-columns:28px 1fr 32px;margin-bottom:4px}
+.set-row.done .set-summary{font-size:.82rem;color:var(--muted);text-decoration:line-through;text-align:left;padding-left:2px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.set-row.done .set-check{min-height:30px}
+.set-row.done .remove-set{min-height:30px}
 
 .exercise-block{background:var(--surface);border-radius:var(--radius);padding:14px;margin-bottom:12px;border:1px solid var(--border)}
 .exercise-block h4{margin-bottom:10px;font-size:.95rem}
@@ -347,6 +357,8 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 @media(max-width:380px){
   .set-header span,.set-row span{font-size:.6rem}
   .set-row input{font-size:.82rem;padding:7px 2px}
+  .set-check{font-size:.72rem}
+  .set-row.done .set-summary{font-size:.72rem}
   .timer-left .timer-value{font-size:1.8rem}
   .workout-timer{padding:10px 12px}
   .gym-done-btn{border-radius:14px}
@@ -753,6 +765,15 @@ function updateSet(section, ei, si, field, val) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   arr[ei].sets[si][field] = val;
 }
+function toggleSetDone(section, ei, si) {
+  var arr = section === 'warmup' ? current.warmups : current.exercises;
+  var set = arr[ei] && arr[ei].sets[si];
+  if (!set) return;
+  set._done = !set._done;
+  renderActive();
+  /* Keep gym mode (pips / counter / first-incomplete) in sync if it's open */
+  if (document.getElementById('gymOverlay').classList.contains('open')) gymRenderContent();
+}
 function removeExercise(section, ei) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   arr.splice(ei, 1);
@@ -814,15 +835,26 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
     '<button class="remove-set" onclick="removeExercise(\'' + sec + '\',' + ei + ')" title="Remove">&#10005;</button></div>' +
     '<div class="set-header"><span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span></span></div>';
   ex.sets.forEach(function(s, si) {
-    var done = s._done ? ' style="opacity:.5"' : '';
-    html +=
-      '<div class="set-row"' + done + '>' +
-      '<span>' + (si + 1) + '</span>' +
-      '<input type="number" inputmode="decimal" value="' + (s.weight || '') + '" placeholder="lbs" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'weight\',this.value)">' +
-      '<input type="number" inputmode="numeric" value="' + (s.reps || '') + '" placeholder="reps" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'reps\',this.value)">' +
-      '<input type="number" inputmode="decimal" value="' + (s.rpe || '') + '" placeholder="RPE" min="1" max="10" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'rpe\',this.value)">' +
-      '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
-      '</div>';
+    var checkBtn = '<button class="set-check' + (s._done ? ' done' : '') + '" onclick="toggleSetDone(\'' + sec + '\',' + ei + ',' + si + ')" title="' + (s._done ? 'Mark not done' : 'Mark done') + '" aria-pressed="' + (s._done ? 'true' : 'false') + '">' + (s._done ? '&#10003;' : (si + 1)) + '</button>';
+    if (s._done) {
+      /* Condensed, struck-through summary line (less vertical height than an editable row) */
+      var summary = (s.weight || '—') + ' × ' + (s.reps || '—') + (s.rpe ? ' @' + s.rpe : '');
+      html +=
+        '<div class="set-row done">' +
+        checkBtn +
+        '<span class="set-summary">' + esc(summary) + '</span>' +
+        '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
+        '</div>';
+    } else {
+      html +=
+        '<div class="set-row">' +
+        checkBtn +
+        '<input type="number" inputmode="decimal" value="' + (s.weight || '') + '" placeholder="lbs" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'weight\',this.value)">' +
+        '<input type="number" inputmode="numeric" value="' + (s.reps || '') + '" placeholder="reps" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'reps\',this.value)">' +
+        '<input type="number" inputmode="decimal" value="' + (s.rpe || '') + '" placeholder="RPE" min="1" max="10" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'rpe\',this.value)">' +
+        '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
+        '</div>';
+    }
   });
   html += '<div class="exercise-actions"><button class="btn btn-ghost btn-sm" onclick="addSet(\'' + sec + '\',' + ei + ')">+ Set</button></div></div>';
   return html;
