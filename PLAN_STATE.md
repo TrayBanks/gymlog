@@ -38,41 +38,52 @@ required state channels. If they disagree, STOP and report.
 
 ---
 
-## Plan (4 steps → 5 features)
+## Plan (5 steps → 5 features) — user chose to split F2/F3
 
-| Step | Feature(s) | Status |
-|------|-----------|--------|
-| 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | not started |
-| 2 | F2 + F3 — Saved plans onto `#log` home + persistent pinned workout timer | not started |
-| 3 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | not started |
-| 4 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | not started |
+| Step | Feature | Status |
+|------|---------|--------|
+| 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | in progress |
+| 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | not started |
+| 3 | F3 — Persistent pinned workout timer (both modes) | not started |
+| 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | not started |
+| 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | not started |
 
 Order rationale:
 - **Step 1 first** because the theme system refactors global `:root` CSS vars; landing it first
   means every later step is built against a theme-aware baseline (no rework).
-- **Step 2** reshapes the `#log` view in two mutually-exclusive states (idle = saved plans;
-  active = pinned timer), so one worker owns that layout coherently.
-- **Step 3** before **Step 4** per the soft dependency above.
+- **Steps 2 & 3** both touch the `#log` view but in mutually-exclusive states (idle = saved
+  plans; active = pinned timer); split per user request, run F2 then F3.
+- **Step 4** before **Step 5** per the soft dependency above.
+
+## Locked decisions (user-approved, Phase 1)
+1. **Gym mode stays always-dark** even under light theme. Theme affects the normal app only.
+2. **Saved plans show in the idle / no-workout state** on `#log`; hidden while a workout is active.
+3. **5 steps** (F2 and F3 are separate steps).
 
 ---
 
 ## Step Log
-### Step 1 — Settings panel
+### Step 1 — Settings panel (F1)
+- Status: in progress
+- Worker verification (gym open / gym closed): —
+- Auditor findings: —
+
+### Step 2 — Saved plans on home, idle state (F2)
 - Status: not started
 - Worker verification (gym open / gym closed): —
 - Auditor findings: —
 
-### Step 2 — Saved plans on home + pinned timer
+### Step 3 — Persistent pinned workout timer (F3)
 - Status: not started
 - Worker verification (gym open / gym closed): —
 - Auditor findings: —
 
-### Step 3 — Set completion check-off
+### Step 4 — Set completion check-off (F4)
 - Status: not started
 - Worker verification (gym open / gym closed): —
 - Auditor findings: —
 
-### Step 4 — Last-weight/sets memory
+### Step 5 — Last-weight/sets memory (F5)
 - Status: not started
 - Worker verification (gym open / gym closed): —
 - Auditor findings: —
