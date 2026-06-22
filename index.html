@@ -926,7 +926,9 @@ function renderActive() {
 }
 
 /* ── Exercise image cache (warmup demos via wger.de public API) ─── */
-var _exImgCache = {};
+var EX_IMG_KEY = 'gymlog_ex_imgs';
+var _exImgUrls  = JSON.parse(localStorage.getItem(EX_IMG_KEY) || '{}'); /* persisted URL map */
+var _exImgFlight = {}; /* session-only: tracks in-flight / known-miss to avoid duplicate fetches */
 function loadExerciseImage(name, imgId) {
   var key = name.toLowerCase().trim();
   var applyImg = function(url) {
@@ -935,11 +937,11 @@ function loadExerciseImage(name, imgId) {
     el.onload = function() { el.classList.add('loaded'); };
     el.src = url;
   };
-  if (_exImgCache[key] !== undefined) {
-    if (_exImgCache[key]) applyImg(_exImgCache[key]);
-    return;
-  }
-  _exImgCache[key] = null; /* mark as pending */
+  /* Persisted hit — URL known from a previous session; SW serves the image from local cache */
+  if (_exImgUrls[key]) { applyImg(_exImgUrls[key]); return; }
+  /* Session guard — in-flight or already tried and got nothing */
+  if (_exImgFlight[key] !== undefined) return;
+  _exImgFlight[key] = null;
   fetch('https://wger.de/api/v2/exercise/search/?term=' + encodeURIComponent(key) + '&language=english&format=json')
     .then(function(r) { return r.ok ? r.json() : null; })
     .then(function(data) {
@@ -953,8 +955,9 @@ function loadExerciseImage(name, imgId) {
     .then(function(data) {
       var img = data && data.results && data.results[0] && data.results[0].image;
       if (!img) return;
-      _exImgCache[key] = img;
-      applyImg(img);
+      _exImgUrls[key] = img;
+      localStorage.setItem(EX_IMG_KEY, JSON.stringify(_exImgUrls)); /* persist for next session */
+      applyImg(img); /* SW will cache the image file on first load */
     })
     .catch(function() {});
 }
