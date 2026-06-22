@@ -9,6 +9,16 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<script>
+/* Apply saved theme before first paint to avoid a flash of the wrong palette.
+   Default is dark (the :root vars). Only 'light' sets the data-theme attribute. */
+(function(){
+  try {
+    var s = JSON.parse(localStorage.getItem('gymlog_settings') || '{}');
+    if (s && s.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  } catch (e) {}
+})();
+</script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{
@@ -16,10 +26,21 @@
   --primary:#6C63FF;--primary-hover:#5b54e6;
   --text:#f1f5f9;--muted:#94a3b8;
   --danger:#ef4444;--success:#22c55e;--warn:#f59e0b;
+  --success-bg:rgba(34,197,94,.14);
   --border:#475569;--radius:12px;
   --warmup:#f59e0b;--warmup-bg:rgba(245,158,11,.08);
   --safe-top:env(safe-area-inset-top,0px);
   --safe-bot:env(safe-area-inset-bottom,0px);
+}
+/* Light theme — affects the NORMAL app only; gym mode stays always-dark */
+:root[data-theme="light"]{
+  --bg:#f4f5fa;--surface:#ffffff;--card:#eef0f6;
+  --primary:#6C63FF;--primary-hover:#5b54e6;
+  --text:#1e2433;--muted:#64708a;
+  --danger:#dc2626;--success:#16a34a;--warn:#d97706;
+  --success-bg:rgba(22,163,74,.12);
+  --border:#d8dde8;
+  --warmup:#b45309;--warmup-bg:rgba(245,158,11,.12);
 }
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-bottom:calc(80px + var(--safe-bot))}
 header{background:var(--surface);padding:16px 20px;padding-top:calc(16px + var(--safe-top));display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
@@ -32,6 +53,27 @@ header h1{font-size:1.3rem;font-weight:800;background:linear-gradient(135deg,#6C
 .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}
 .btn-sm{padding:6px 14px;font-size:.82rem;min-height:36px}
 .btn-lg{padding:18px 32px;font-size:1.1rem;border-radius:16px;min-height:56px}
+.icon-btn{background:transparent;color:var(--muted);border:1px solid var(--border);border-radius:var(--radius);width:38px;height:38px;min-height:38px;font-size:1.15rem;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s}
+.icon-btn:active{color:var(--text);border-color:var(--primary)}
+
+/* Settings */
+.settings-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-top:1px solid var(--border)}
+.settings-row:first-of-type{border-top:none}
+.settings-row .settings-label{font-weight:600;font-size:.95rem}
+.settings-row .settings-desc{font-size:.78rem;color:var(--muted);margin-top:3px;line-height:1.4}
+.settings-row .settings-control{flex-shrink:0}
+/* Toggle switch */
+.switch{position:relative;display:inline-block;width:50px;height:30px}
+.switch input{opacity:0;width:0;height:0}
+.switch .slider{position:absolute;inset:0;background:var(--card);border:1px solid var(--border);border-radius:30px;cursor:pointer;transition:all .2s}
+.switch .slider:before{content:"";position:absolute;height:22px;width:22px;left:3px;top:3px;background:var(--muted);border-radius:50%;transition:all .2s}
+.switch input:checked+.slider{background:var(--primary);border-color:var(--primary)}
+.switch input:checked+.slider:before{transform:translateX(20px);background:#fff}
+.switch input:disabled+.slider{opacity:.4;cursor:not-allowed}
+/* Theme segmented control */
+.theme-seg{display:inline-flex;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:3px;gap:3px}
+.theme-seg button{background:transparent;border:none;color:var(--muted);font-size:.82rem;font-weight:600;padding:7px 14px;border-radius:8px;cursor:pointer;min-height:36px;transition:all .15s}
+.theme-seg button.active{background:var(--primary);color:#fff}
 
 /* Nav tabs */
 nav{display:flex;background:var(--surface);border-bottom:1px solid var(--border)}
@@ -61,12 +103,24 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .set-row input{padding:8px 4px;background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--text);text-align:center;font-size:.9rem;min-height:40px;width:100%}
 .set-row input:focus{outline:none;border-color:var(--primary)}
 .remove-set{background:none;border:none;color:var(--danger);cursor:pointer;font-size:1.1rem;padding:4px;min-width:32px;min-height:32px;display:flex;align-items:center;justify-content:center}
+/* Set check-off control: repurposes the leading 28px "#" cell into a tap toggle for _done */
+.set-check{background:none;border:1px solid var(--border);color:var(--muted);cursor:pointer;font-size:.82rem;font-weight:600;padding:0;width:100%;min-height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;line-height:1}
+.set-check.done{border-color:var(--success);color:var(--success);background:var(--success-bg)}
+/* Condensed "done" row: a compact summary line, less vertical height than an editable row */
+.set-row.done{grid-template-columns:28px 1fr 32px;margin-bottom:4px}
+.set-row.done .set-summary{font-size:.82rem;color:var(--muted);text-decoration:line-through;text-align:left;padding-left:2px;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.set-row.done .set-check{min-height:30px}
+.set-row.done .remove-set{min-height:30px}
 
 .exercise-block{background:var(--surface);border-radius:var(--radius);padding:14px;margin-bottom:12px;border:1px solid var(--border)}
 .exercise-block h4{margin-bottom:10px;font-size:.95rem}
 .exercise-block.warmup-block{border-color:rgba(245,158,11,.3);background:var(--warmup-bg)}
 .set-header{display:grid;grid-template-columns:28px 1fr 1fr 1fr 32px;gap:6px;margin-bottom:6px}
 .set-header span{font-size:.68rem;color:var(--muted);text-transform:uppercase;text-align:center;font-weight:600}
+.last-perf{font-size:.72rem;color:var(--muted);margin:0 0 8px;line-height:1.5;font-variant-numeric:tabular-nums}
+.weight-adj{display:flex;gap:4px;padding:1px 0 5px 28px}
+.weight-adj button{background:rgba(108,99,255,.08);color:var(--primary);border:1px solid rgba(108,99,255,.2);border-radius:6px;font-size:.68rem;font-weight:700;padding:2px 7px;cursor:pointer;min-height:26px}
+.weight-adj button:active{background:rgba(108,99,255,.2)}
 .exercise-actions{display:flex;gap:8px;margin-top:8px}
 
 /* Section labels */
@@ -116,8 +170,12 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .day-picker-item .day-name{font-weight:600;font-size:.95rem}
 .day-picker-item .day-meta{font-size:.8rem;color:var(--muted)}
 
-/* Active workout timer card */
-.workout-timer{background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:14px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* Active workout timer card — pinned below the sticky app header.
+   Header height = 16(pad-top) + 38(tallest control: .icon-btn) + 16(pad-bot) + 1(border) = 71px,
+   plus the safe-area inset the header already adds via padding-top. The sticky timer's
+   `top` matches that so it catches flush under the header without a gap or overlap.
+   z-index:5 sits below the header (z-index:10) so it tucks under, never over, the header. */
+.workout-timer{position:sticky;top:calc(71px + var(--safe-top));z-index:5;background:var(--surface);border-radius:var(--radius);border:1px solid var(--border);padding:14px 16px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .timer-left .timer-value{font-size:clamp(2rem,9vw,2.8rem);font-weight:800;font-variant-numeric:tabular-nums;color:var(--primary);letter-spacing:2px;line-height:1}
 .timer-left .timer-label{font-size:.68rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-top:4px}
 .timer-right{text-align:right}
@@ -137,6 +195,15 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .plan-item .plan-meta{font-size:.73rem;color:var(--muted);margin-top:2px}
 .plan-item .plan-actions{display:flex;gap:6px;flex-shrink:0}
 .modal-divider{border:none;border-top:1px solid var(--border);margin:14px 0}
+/* Warmup-only set row (done/not-done, no inputs) */
+.set-row.warmup-row{grid-template-columns:28px 1fr 32px}
+.warmup-set-label{font-size:.82rem;color:var(--muted);padding:0 4px;line-height:1}
+/* Video link button on warmup exercises */
+.warmup-vid-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:rgba(245,158,11,.1);color:#f59e0b;border:1px solid rgba(245,158,11,.3);border-radius:6px;font-size:.75rem;text-decoration:none;flex-shrink:0}
+.warmup-vid-btn:active{background:rgba(245,158,11,.2)}
+/* Last-done badge on plan day picker */
+.day-last-done{font-size:.7rem;white-space:nowrap;flex-shrink:0;color:var(--muted);text-align:right}
+.day-last-done.done{color:var(--primary);font-weight:600}
 
 /* ═══════════════════════════════════════════
    GYM MODE — full-screen focus overlay
@@ -162,12 +229,20 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
   cursor:pointer;white-space:nowrap;min-height:36px;min-width:60px;
 }
 .gym-exit-btn:active{color:#fff;border-color:#444}
-.gym-progress{font-size:.78rem;color:#555;font-weight:600;letter-spacing:.5px;text-align:center;flex:1}
+.gym-progress{font-size:.82rem;color:#555;font-weight:600;letter-spacing:.5px;text-align:right;white-space:nowrap}
 .gym-overall-timer{
-  font-size:clamp(1.2rem,5vw,1.6rem);font-weight:800;
+  font-size:clamp(1.5rem,6.5vw,2rem);font-weight:800;
   font-variant-numeric:tabular-nums;color:#6C63FF;
-  letter-spacing:2px;white-space:nowrap;
+  letter-spacing:2px;white-space:nowrap;flex:1;text-align:center;
 }
+.gym-weight-adj{display:flex;gap:10px;justify-content:center;margin:-8px 0 22px;flex-wrap:wrap}
+.gym-weight-adj button{background:rgba(108,99,255,.12);color:#8B85FF;border:1px solid rgba(108,99,255,.3);border-radius:10px;font-size:.85rem;font-weight:700;padding:9px 16px;cursor:pointer;min-height:42px;min-width:52px}
+.gym-weight-adj button:active{background:rgba(108,99,255,.3)}
+/* Warmup exercise demo image (gym mode) */
+.gym-warmup-img-wrap{width:100%;max-width:320px;margin:4px auto 20px;border-radius:12px;overflow:hidden;background:#0a1628;min-height:140px;display:flex;align-items:center;justify-content:center;position:relative}
+.gym-warmup-img{width:100%;height:auto;max-height:220px;object-fit:cover;display:block;opacity:0;transition:opacity .4s}
+.gym-warmup-img.loaded{opacity:1}
+.gym-warmup-img-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.2rem;opacity:.18}
 
 /* Main scrollable content */
 .gym-main{
@@ -212,6 +287,10 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
   letter-spacing:.5px;
 }
 .gym-target strong{color:#ccc}
+/* Last-time reference in gym mode — hardcoded palette (gym is always-dark, never themed vars).
+   .gym-target keeps margin-bottom:28px; this sits below it, glanceable and small. */
+.gym-last-perf{font-size:clamp(.74rem,2.8vw,.95rem);color:#888;text-align:center;margin:-16px 0 26px;letter-spacing:.3px;font-variant-numeric:tabular-nums}
+.gym-last-perf span{color:#888}
 
 /* Done button */
 .gym-done-btn{
@@ -264,7 +343,7 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .gym-set-pip.active{border-color:#6C63FF;color:#6C63FF;background:rgba(108,99,255,.12)}
 .gym-set-pip.done{border-color:#22c55e;color:#22c55e;background:rgba(34,197,94,.1)}
 
-/* ── REST TIMER overlay (sits inside #gymOverlay) ── */
+/* ── REST TIMER overlay (sits inside .gym-main, so header stays visible) ── */
 #gymRestOverlay{
   display:none;position:absolute;inset:0;
   background:#020408;
@@ -272,6 +351,7 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
   padding:20px;z-index:10;
 }
 #gymRestOverlay.show{display:flex}
+.gym-rest-skip-row{display:flex;gap:12px;align-items:center}
 
 .gym-rest-label{
   font-size:.7rem;font-weight:800;letter-spacing:4px;
@@ -298,11 +378,21 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
   font-weight:600;cursor:pointer;min-height:48px;
 }
 .gym-skip-btn:active{color:#fff;border-color:#555}
+.gym-pause-btn{
+  background:none;border:1px solid #2a2a2a;color:#666;
+  border-radius:8px;padding:8px 10px;font-size:1rem;
+  cursor:pointer;white-space:nowrap;min-height:36px;min-width:38px;
+  line-height:1;
+}
+.gym-pause-btn:active{color:#fff;border-color:#444}
+.gym-pause-btn.paused{color:#f59e0b;border-color:rgba(245,158,11,.5)}
 
 /* Narrow screen (Fold 5 cover ≈ 373px) tweaks */
 @media(max-width:380px){
   .set-header span,.set-row span{font-size:.6rem}
   .set-row input{font-size:.82rem;padding:7px 2px}
+  .set-check{font-size:.72rem}
+  .set-row.done .set-summary{font-size:.72rem}
   .timer-left .timer-value{font-size:1.8rem}
   .workout-timer{padding:10px 12px}
   .gym-done-btn{border-radius:14px}
@@ -321,7 +411,10 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 
 <header>
 <h1>GymLog</h1>
+<div style="display:flex;align-items:center;gap:8px">
 <button class="btn btn-ghost btn-sm" onclick="exportData()">Export</button>
+<button class="icon-btn" onclick="openSettings()" title="Settings" aria-label="Settings">&#9881;</button>
+</div>
 </header>
 
 <nav>
@@ -333,6 +426,10 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <!-- LOG VIEW -->
 <div id="log" class="view active">
 <div id="activeWorkout"></div>
+<div id="homePlansSection" class="plans-section" style="display:none">
+<div class="plans-section-header">&#128190; Saved Plans</div>
+<div id="homePlansList"></div>
+</div>
 <div id="noWorkout" class="empty-state">
   <div class="icon">&#127947;&#65039;</div>
   <p>Ready to train?</p>
@@ -377,15 +474,58 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 </div>
 </div>
 
+<!-- SETTINGS MODAL -->
+<div id="settingsModal" class="modal-overlay">
+<div class="modal">
+<h2>&#9881; Settings</h2>
+<div class="settings-row">
+<div>
+<div class="settings-label">Theme</div>
+<div class="settings-desc">Light or dark for the app. Gym mode stays dark.</div>
+</div>
+<div class="settings-control">
+<div class="theme-seg" id="themeSeg">
+<button type="button" data-theme-val="light" onclick="setTheme('light')">Light</button>
+<button type="button" data-theme-val="dark" onclick="setTheme('dark')">Dark</button>
+</div>
+</div>
+</div>
+<div class="settings-row">
+<div>
+<div class="settings-label">Keep screen awake</div>
+<div class="settings-desc" id="wakeDesc">Prevents the screen from sleeping during workouts.</div>
+</div>
+<div class="settings-control">
+<label class="switch">
+<input type="checkbox" id="keepAwakeToggle" onchange="toggleKeepAwake(this.checked)">
+<span class="slider"></span>
+</label>
+</div>
+</div>
+<div class="settings-row">
+<div>
+<div class="settings-label">Default rest time</div>
+<div class="settings-desc">Between working sets. Warmup sets have no rest.</div>
+</div>
+<div class="settings-control">
+<div class="theme-seg" id="restSeg">
+<button type="button" data-rest-val="60" onclick="setDefaultRest(60)">1m</button>
+<button type="button" data-rest-val="90" onclick="setDefaultRest(90)">1:30</button>
+<button type="button" data-rest-val="120" onclick="setDefaultRest(120)">2m</button>
+<button type="button" data-rest-val="180" onclick="setDefaultRest(180)">3m</button>
+</div>
+</div>
+</div>
+<div style="display:flex;gap:8px;margin-top:18px">
+<button class="btn btn-ghost" style="flex:1" onclick="closeSettings()">Done</button>
+</div>
+</div>
+</div>
+
 <!-- PASTE FROM AI MODAL -->
 <div id="pasteModal" class="modal-overlay">
 <div class="modal">
 <h2>&#128203; Paste from AI</h2>
-<div id="savedPlansSection" class="plans-section" style="display:none">
-<div class="plans-section-header">&#128190; Saved Plans</div>
-<div id="savedPlansList"></div>
-<hr class="modal-divider">
-</div>
 <p class="paste-info">
 Paste a workout plan in JSON format from <strong>Claude</strong>, <strong>ChatGPT</strong>, or any AI.<br><br>
 Supports a single workout <em>or</em> an array of multiple days. Optional <code style="background:var(--card);padding:2px 6px;border-radius:4px;font-size:.78rem">warmups</code> adds a warm-up section.
@@ -419,6 +559,16 @@ Supports a single workout <em>or</em> an array of multiple days. Optional <code 
 </div>
 </div>
 
+<!-- PLAN DAY PICKER MODAL -->
+<div id="planDayModal" class="modal-overlay">
+<div class="modal">
+<h2 id="planDayModalTitle">Select Day</h2>
+<p style="font-size:.85rem;color:var(--muted);margin-bottom:4px">Days ordered by last done — pick what's next.</p>
+<ul class="day-picker-list" id="planDayList"></ul>
+<button class="btn btn-ghost" style="width:100%;margin-top:4px" onclick="closePlanDayModal()">Cancel</button>
+</div>
+</div>
+
 <!-- ══════════════════════════════════════
      GYM MODE OVERLAY
      ══════════════════════════════════════ -->
@@ -426,28 +576,32 @@ Supports a single workout <em>or</em> an array of multiple days. Optional <code 
 
   <!-- Header -->
   <div class="gym-header">
-    <button class="gym-exit-btn" onclick="closeGymMode()">✕ Exit</button>
-    <span class="gym-progress" id="gymProgress"></span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button class="gym-exit-btn" onclick="closeGymMode()">✕ Exit</button>
+      <button class="gym-pause-btn" id="gymPauseBtn" onclick="gymTogglePause()" title="Pause">⏸</button>
+    </div>
     <span class="gym-overall-timer" id="gymOverallTimer">00:00</span>
+    <span class="gym-progress" id="gymProgress"></span>
   </div>
 
-  <!-- Main content -->
+  <!-- Main content — rest overlay sits here so header stays visible -->
   <div class="gym-main" id="gymMain">
     <div id="gymContent" style="display:flex;flex-direction:column;align-items:center;width:100%;max-width:420px"></div>
+    <!-- Rest timer overlay (absolute inside gym-main, header remains visible) -->
+    <div id="gymRestOverlay">
+      <div class="gym-rest-label">REST</div>
+      <div class="gym-rest-time" id="gymRestTime">01:30</div>
+      <div class="gym-rest-bar-wrap"><div class="gym-rest-bar" id="gymRestBar" style="width:100%"></div></div>
+      <div class="gym-rest-next" id="gymRestNext"></div>
+      <div class="gym-rest-skip-row">
+        <button class="gym-skip-btn" onclick="gymSkipRest()">Skip Rest</button>
+      </div>
+    </div>
   </div>
 
   <!-- Set pips tray -->
   <div class="gym-sets-tray">
     <div class="gym-sets-row" id="gymSetsTray"></div>
-  </div>
-
-  <!-- Rest timer overlay (absolute, sits over gym-main) -->
-  <div id="gymRestOverlay">
-    <div class="gym-rest-label">REST</div>
-    <div class="gym-rest-time" id="gymRestTime">01:30</div>
-    <div class="gym-rest-bar-wrap"><div class="gym-rest-bar" id="gymRestBar" style="width:100%"></div></div>
-    <div class="gym-rest-next" id="gymRestNext"></div>
-    <button class="gym-skip-btn" onclick="gymSkipRest()">Skip Rest</button>
   </div>
 </div>
 
@@ -456,12 +610,56 @@ Supports a single workout <em>or</em> an array of multiple days. Optional <code 
 var DB_KEY = 'gymlog_workouts';
 var EXERCISES_KEY = 'gymlog_exercises';
 var PLANS_KEY = 'gymlog_plans';
+var SETTINGS_KEY = 'gymlog_settings';
 
 var workouts = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
+var currentPlanId = null;   /* id of the plan that loaded the current workout */
+var currentPlanDayIdx = null; /* day index within that plan (null for single-day) */
 var knownExercises = JSON.parse(localStorage.getItem(EXERCISES_KEY) ||
   '["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row","Pull Up","Lat Pulldown","Bicep Curl","Tricep Pushdown","Leg Press","Romanian Deadlift","Lateral Raise"]');
-var plans = JSON.parse(localStorage.getItem(PLANS_KEY) || '[]');
+var _rawPlans = localStorage.getItem(PLANS_KEY);
+var plans = _rawPlans ? (JSON.parse(_rawPlans) || []) : null;
+if (!plans) {
+  plans = [{
+    id: 1000000000001,
+    name: 'Push / Pull / Legs',
+    data: [
+      { name: 'Push Day', exercises: [
+        { name: 'Band Pull-Apart',        sets: 2, reps: '15', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Arm Circles',            sets: 2, reps: '10', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Bench Press',            sets: 4, reps: '8',  rest: 90  },
+        { name: 'Overhead Press',         sets: 3, reps: '8',  rest: 90  },
+        { name: 'Incline Dumbbell Press', sets: 3, reps: '10', rest: 90  },
+        { name: 'Lateral Raise',          sets: 3, reps: '15', rest: 60  },
+        { name: 'Tricep Pushdown',        sets: 3, reps: '12', rest: 60  }
+      ]},
+      { name: 'Pull Day', exercises: [
+        { name: 'Dead Hang',    sets: 2, reps: '20s', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Band Face Pull', sets: 2, reps: '15', rest: 0,  notes: 'WARM-UP' },
+        { name: 'Deadlift',     sets: 4, reps: '5',  rest: 120  },
+        { name: 'Pull Up',      sets: 3, reps: '6',  rest: 90   },
+        { name: 'Barbell Row',  sets: 3, reps: '8',  rest: 90   },
+        { name: 'Lat Pulldown', sets: 3, reps: '12', rest: 60   },
+        { name: 'Bicep Curl',   sets: 3, reps: '12', rest: 60   }
+      ]},
+      { name: 'Leg Day', exercises: [
+        { name: 'Leg Swing',        sets: 2, reps: '10', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Bodyweight Squat', sets: 2, reps: '15', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Squat',            sets: 4, reps: '8',  rest: 120  },
+        { name: 'Romanian Deadlift', sets: 3, reps: '10', rest: 90  },
+        { name: 'Leg Press',        sets: 3, reps: '12', rest: 90   },
+        { name: 'Leg Curl',         sets: 3, reps: '12', rest: 60   },
+        { name: 'Calf Raise',       sets: 4, reps: '15', rest: 60   }
+      ]}
+    ]
+  }];
+  localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+}
 var current = null;
+
+/* Settings (new gymlog_settings key; independent of save()) */
+var settings = loadSettings();
+var wakeLock = null;
 
 /* Timer */
 var timerInterval = null;
@@ -472,11 +670,98 @@ var gymSetIdx = 0;
 var restInterval = null;
 var restRemaining = 0;
 var restTotal = 0;
+var gymPaused = false;
+var gymPauseStart = 0;
+var restPausedAt = 0;
 
 function save() {
   localStorage.setItem(DB_KEY, JSON.stringify(workouts));
   localStorage.setItem(EXERCISES_KEY, JSON.stringify([...new Set(knownExercises)]));
   localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+}
+
+/* ── Settings ───────────────────────────────────── */
+function loadSettings() {
+  var s = {};
+  try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (e) { s = {}; }
+  return {
+    theme: s.theme === 'light' ? 'light' : 'dark',
+    keepAwake: s.keepAwake === true,
+    defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90
+  };
+}
+function saveSettings() {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+/* Theme */
+function applyTheme() {
+  if (settings.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  else document.documentElement.removeAttribute('data-theme');
+}
+function setTheme(theme) {
+  settings.theme = (theme === 'light') ? 'light' : 'dark';
+  saveSettings();
+  applyTheme();
+  syncSettingsUI();
+}
+
+/* Screen Wake Lock — needs a secure context (HTTPS or localhost). */
+var WAKE_SUPPORTED = ('wakeLock' in navigator);
+function acquireWakeLock() {
+  if (!WAKE_SUPPORTED) return;
+  if (wakeLock) return;
+  navigator.wakeLock.request('screen').then(function(lock) {
+    wakeLock = lock;
+    wakeLock.addEventListener('release', function() { wakeLock = null; });
+  }).catch(function() {
+    /* Rejected (e.g. tab not visible, low battery, insecure context). Leave toggle as user set it. */
+    wakeLock = null;
+  });
+}
+function releaseWakeLock() {
+  if (wakeLock) {
+    try { wakeLock.release(); } catch (e) {}
+    wakeLock = null;
+  }
+}
+function toggleKeepAwake(on) {
+  settings.keepAwake = !!on;
+  saveSettings();
+  if (settings.keepAwake) acquireWakeLock();
+  else releaseWakeLock();
+}
+
+function setDefaultRest(secs) {
+  settings.defaultRest = secs;
+  saveSettings();
+  syncSettingsUI();
+}
+
+function syncSettingsUI() {
+  document.querySelectorAll('#themeSeg button').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-theme-val') === settings.theme);
+  });
+  document.querySelectorAll('#restSeg button').forEach(function(b) {
+    b.classList.toggle('active', parseInt(b.getAttribute('data-rest-val'), 10) === settings.defaultRest);
+  });
+  var toggle = document.getElementById('keepAwakeToggle');
+  if (toggle) {
+    toggle.checked = settings.keepAwake;
+    toggle.disabled = !WAKE_SUPPORTED;
+  }
+  if (!WAKE_SUPPORTED) {
+    var d = document.getElementById('wakeDesc');
+    if (d) d.textContent = 'Not supported in this browser/context (needs HTTPS or localhost).';
+  }
+}
+
+function openSettings() {
+  syncSettingsUI();
+  document.getElementById('settingsModal').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settingsModal').classList.remove('open');
 }
 
 /* ── Timer ──────────────────────────────────────── */
@@ -527,12 +812,52 @@ function switchTab(id, btn) {
 }
 
 /* ── Workout lifecycle ──────────────────────────── */
+function getWeekStart(ts) {
+  var d = new Date(ts);
+  var day = d.getDay(); // 0=Sun
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 function startWorkout() {
   if (current) { openModal(); return; }
-  var now = Date.now();
-  current = { id: now, date: new Date(now).toISOString(), startTime: now, warmups: [], exercises: [] };
-  startTimer();
-  renderActive();
+  if (plans.length === 0) {
+    var now = Date.now();
+    current = { id: now, date: new Date(now).toISOString(), startTime: now, warmups: [], exercises: [] };
+    startTimer(); renderActive(); return;
+  }
+  /* Find last-used plan from workout history, fall back to most recently saved plan */
+  var lastPlan = null;
+  for (var wi = 0; wi < workouts.length; wi++) {
+    if (workouts[wi]._planId) {
+      lastPlan = plans.find(function(p) { return p.id === workouts[wi]._planId; });
+      if (lastPlan) break;
+    }
+  }
+  if (!lastPlan) lastPlan = plans[0];
+  var data = lastPlan.data;
+  var days = Array.isArray(data) ? data : [data];
+  currentPlanId = lastPlan.id;
+  if (days.length === 1) { currentPlanDayIdx = 0; loadWorkoutFromPaste(days[0]); return; }
+  /* Multi-day: figure out which day hasn't been done this week */
+  var weekStart = getWeekStart(Date.now());
+  var doneDayNames = {};
+  for (var wi2 = 0; wi2 < workouts.length; wi2++) {
+    var w = workouts[wi2];
+    if (w._planId === lastPlan.id && new Date(w.date) >= weekStart && w._planDayName) {
+      doneDayNames[w._planDayName] = true;
+    }
+  }
+  var undoneDays = days.filter(function(d) { return !doneDayNames[d.name]; });
+  if (undoneDays.length === 1) {
+    /* Exactly one day left this week — auto-load it */
+    currentPlanDayIdx = days.indexOf(undoneDays[0]);
+    loadWorkoutFromPaste(undoneDays[0]);
+  } else {
+    /* New week or multiple options — show ordered day picker */
+    showPlanDayModal(lastPlan, days);
+  }
 }
 
 function finishWorkout() {
@@ -567,11 +892,35 @@ function openModal() {
 }
 function closeModal() { document.getElementById('exerciseModal').classList.remove('open'); }
 
+function syncCurrentToPlan() {
+  if (!currentPlanId || currentPlanDayIdx === null || !current) return;
+  var plan = plans.find(function(p) { return p.id === currentPlanId; });
+  if (!plan) return;
+  var dayData = Array.isArray(plan.data) ? plan.data[currentPlanDayIdx] : plan.data;
+  if (!dayData) return;
+  var allExercises = [];
+  (current.warmups || []).forEach(function(ex) {
+    allExercises.push({ name: ex.name, sets: ex.sets.length,
+      reps: ex.sets[0] ? ex.sets[0].reps || '' : '',
+      rest: 0, notes: ex._notes || '' });
+  });
+  (current.exercises || []).forEach(function(ex) {
+    allExercises.push({ name: ex.name, sets: ex.sets.length,
+      reps: ex.sets[0] ? ex.sets[0].reps || '' : '',
+      rest: ex._rest != null ? ex._rest : null, notes: ex._notes || '' });
+  });
+  dayData.exercises = allExercises;
+  save();
+}
+
 function addExercise() {
   var name = document.getElementById('exerciseName').value.trim();
   if (!name || !current) return;
   if (!knownExercises.includes(name)) knownExercises.push(name);
-  current.exercises.push({ name: name, sets: [{ weight: '', reps: '', rpe: '' }] });
+  var lp = lastPerformance(name);
+  var initWeight = lp && lp.sets[0] ? lp.sets[0].weight || '' : '';
+  current.exercises.push({ name: name, sets: [{ weight: initWeight, reps: '', rpe: '' }] });
+  syncCurrentToPlan();
   save();
   closeModal();
   renderActive();
@@ -594,9 +943,19 @@ function updateSet(section, ei, si, field, val) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   arr[ei].sets[si][field] = val;
 }
+function toggleSetDone(section, ei, si) {
+  var arr = section === 'warmup' ? current.warmups : current.exercises;
+  var set = arr[ei] && arr[ei].sets[si];
+  if (!set) return;
+  set._done = !set._done;
+  renderActive();
+  /* Keep gym mode (pips / counter / first-incomplete) in sync if it's open */
+  if (document.getElementById('gymOverlay').classList.contains('open')) gymRenderContent();
+}
 function removeExercise(section, ei) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   arr.splice(ei, 1);
+  syncCurrentToPlan();
   renderActive();
 }
 
@@ -604,6 +963,7 @@ function removeExercise(section, ei) {
 function renderActive() {
   var cont = document.getElementById('activeWorkout');
   var empty = document.getElementById('noWorkout');
+  renderHomePlans();  // idle + plans → show on home; active workout → hidden
   if (!current) { cont.innerHTML = ''; empty.style.display = ''; return; }
   empty.style.display = 'none';
 
@@ -642,27 +1002,182 @@ function renderActive() {
   cont.innerHTML = html;
 }
 
+/* ── Exercise image cache (warmup demos via wger.de public API) ─── */
+var EX_IMG_KEY = 'gymlog_ex_imgs';
+var _exImgUrls  = JSON.parse(localStorage.getItem(EX_IMG_KEY) || '{}'); /* persisted URL map */
+var _exImgFlight = {}; /* session-only: tracks in-flight / known-miss to avoid duplicate fetches */
+function loadExerciseImage(name, imgId) {
+  var key = name.toLowerCase().trim();
+  var applyImg = function(url) {
+    var el = document.getElementById(imgId);
+    if (!el) return;
+    el.onload = function() { el.classList.add('loaded'); };
+    el.src = url;
+  };
+  /* Persisted hit — URL known from a previous session; SW serves the image from local cache */
+  if (_exImgUrls[key]) { applyImg(_exImgUrls[key]); return; }
+  /* Session guard — in-flight or already tried and got nothing */
+  if (_exImgFlight[key] !== undefined) return;
+  _exImgFlight[key] = null;
+  fetch('https://wger.de/api/v2/exercise/search/?term=' + encodeURIComponent(key) + '&language=english&format=json')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      var s = data && data.suggestions && data.suggestions[0];
+      if (!s) return null;
+      var baseId = (s.data && (s.data.base_id || s.data.id)) || null;
+      if (!baseId) return null;
+      return fetch('https://wger.de/api/v2/exerciseimage/?exercise_base=' + baseId + '&format=json&is_main=1');
+    })
+    .then(function(r) { return r && r.ok ? r.json() : null; })
+    .then(function(data) {
+      var img = data && data.results && data.results[0] && data.results[0].image;
+      if (!img) return;
+      _exImgUrls[key] = img;
+      localStorage.setItem(EX_IMG_KEY, JSON.stringify(_exImgUrls)); /* persist for next session */
+      applyImg(img); /* SW will cache the image file on first load */
+    })
+    .catch(function() {});
+}
+
+/* ── Weight quick-adjust helpers ────────────────────── */
+function adjustSetWeight(sec, ei, si, delta) {
+  var arr = sec === 'warmup' ? current.warmups : current.exercises;
+  var s = arr[ei].sets[si];
+  var cur = parseFloat(s.weight) || 0;
+  s.weight = String(cur + delta);
+  save();
+  renderActive();
+}
+function promptCustomWeight(sec, ei, si) {
+  var val = prompt('Adjust by how many lbs?', '5');
+  var n = parseFloat(val);
+  if (!isNaN(n)) adjustSetWeight(sec, ei, si, n);
+}
+function gymAdjustWeight(delta) {
+  var exs = gymGetExercises();
+  if (gymExIdx >= exs.length) return;
+  var sets = exs[gymExIdx].ex.sets;
+  if (gymSetIdx >= sets.length) return;
+  var cur = parseFloat(sets[gymSetIdx].weight) || 0;
+  sets[gymSetIdx].weight = String(cur + delta);
+  save();
+  gymRenderContent();
+}
+function gymPromptCustomWeight() {
+  var val = prompt('Adjust by how many lbs?', '5');
+  var n = parseFloat(val);
+  if (!isNaN(n)) gymAdjustWeight(n);
+}
+
+/* ── Last-performance memory (F5) ─────────────────────
+   Scan completed `workouts` (newest-first) for the most recent
+   exercise whose name matches `name` (case-insensitive, trimmed)
+   and that has at least one set. The active `current` workout is
+   NOT in `workouts` (added on finish), so no self-match. Cheap
+   O(history) loop; called during render. Returns {sets,date,
+   hasDone} or null. */
+function lastPerformance(name) {
+  if (!name) return null;
+  var key = String(name).trim().toLowerCase();
+  if (!key) return null;
+  for (var wi = 0; wi < workouts.length; wi++) {
+    var w = workouts[wi];
+    if (!w) continue;
+    /* Prefer working sets over warmups when both carry the same name in one workout */
+    var all = (w.exercises || []).concat(w.warmups || []);
+    for (var ei = 0; ei < all.length; ei++) {
+      var e = all[ei];
+      if (!e || !e.name) continue;
+      if (String(e.name).trim().toLowerCase() !== key) continue;
+      var sets = e.sets || [];
+      if (sets.length === 0) continue; /* skip empty-sets occurrence, keep looking */
+      var hasDone = sets.some(function(s) { return s && s._done; });
+      return { sets: sets, date: w.date, hasDone: hasDone };
+    }
+  }
+  return null;
+}
+
+/* Build the inner HTML of a "Last: …" reference line.
+   `themed` → normal mode (uses var(--muted) via the wrapper class).
+   When the historical exercise carries _done info (hasDone), mark
+   completed sets normally and de-emphasize/strike attempted-but-not
+   -completed ones. When it carries NO _done (legacy data), render
+   every set neutral (no misleading "not completed" stigma). */
+function lastPerfSetsHtml(lp, struckStyle) {
+  return lp.sets.map(function(s) {
+    s = s || {};
+    var w = (s.weight === 0 || s.weight) ? s.weight : '—';
+    var r = (s.reps === 0 || s.reps) ? s.reps : '—';
+    var txt = esc(w + '×' + r);
+    if (lp.hasDone && !s._done) {
+      return '<span style="' + struckStyle + '">' + txt + '</span>';
+    }
+    return '<span>' + txt + '</span>';
+  }).join(' · ');
+}
+
 function renderExerciseBlock(ex, ei, section, isWarmup) {
   var sec = isWarmup ? 'warmup' : 'exercise';
   var blockClass = 'exercise-block' + (isWarmup ? ' warmup-block' : '');
+  var vidBtn = isWarmup
+    ? '<a href="https://www.youtube.com/results?search_query=' + encodeURIComponent(ex.name + ' exercise how to') + '" target="_blank" rel="noopener" class="warmup-vid-btn" title="How-to video">&#9654;</a>'
+    : '';
   var html =
     '<div class="' + blockClass + '">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
-    '<h4 style="font-size:.92rem">' + esc(ex.name) +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:10px">' +
+    '<h4 style="font-size:.92rem;flex:1;min-width:0">' + esc(ex.name) +
     (ex._notes ? '<span style="display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px">' + esc(ex._notes) + '</span>' : '') +
     '</h4>' +
-    '<button class="remove-set" onclick="removeExercise(\'' + sec + '\',' + ei + ')" title="Remove">&#10005;</button></div>' +
-    '<div class="set-header"><span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span></span></div>';
-  ex.sets.forEach(function(s, si) {
-    var done = s._done ? ' style="opacity:.5"' : '';
-    html +=
-      '<div class="set-row"' + done + '>' +
-      '<span>' + (si + 1) + '</span>' +
-      '<input type="number" inputmode="decimal" value="' + (s.weight || '') + '" placeholder="lbs" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'weight\',this.value)">' +
-      '<input type="number" inputmode="numeric" value="' + (s.reps || '') + '" placeholder="reps" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'reps\',this.value)">' +
-      '<input type="number" inputmode="decimal" value="' + (s.rpe || '') + '" placeholder="RPE" min="1" max="10" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'rpe\',this.value)">' +
-      '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
+    vidBtn +
+    '<button class="remove-set" onclick="removeExercise(\'' + sec + '\',' + ei + ')" title="Remove">&#10005;</button></div>';
+  /* Last-perf only for working sets — warmups don't log weight */
+  var lp = isWarmup ? null : lastPerformance(ex.name);
+  if (lp) {
+    html += '<div class="last-perf">Last: ' +
+      lastPerfSetsHtml(lp, 'text-decoration:line-through;opacity:.55') +
       '</div>';
+  }
+  if (isWarmup) {
+    html += '<div class="set-header" style="grid-template-columns:28px 1fr 32px"><span>#</span><span></span><span></span></div>';
+  } else {
+    html += '<div class="set-header"><span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span></span></div>';
+  }
+  ex.sets.forEach(function(s, si) {
+    var checkBtn = '<button class="set-check' + (s._done ? ' done' : '') + '" onclick="toggleSetDone(\'' + sec + '\',' + ei + ',' + si + ')" title="' + (s._done ? 'Mark not done' : 'Mark done') + '" aria-pressed="' + (s._done ? 'true' : 'false') + '">' + (s._done ? '&#10003;' : (si + 1)) + '</button>';
+    if (s._done) {
+      var summary = isWarmup ? 'Done' : ((s.weight || '—') + ' × ' + (s.reps || '—') + (s.rpe ? ' @' + s.rpe : ''));
+      html +=
+        '<div class="set-row done' + (isWarmup ? ' warmup-row' : '') + '">' +
+        checkBtn +
+        '<span class="set-summary">' + esc(summary) + '</span>' +
+        '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
+        '</div>';
+    } else if (isWarmup) {
+      html +=
+        '<div class="set-row warmup-row">' +
+        checkBtn +
+        '<span class="warmup-set-label">Set ' + (si + 1) + '</span>' +
+        '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
+        '</div>';
+    } else {
+      var lpWeight = lp && lp.sets[si] ? lp.sets[si].weight || '' : '';
+      var weightVal = (s.weight !== undefined && s.weight !== '') ? s.weight : lpWeight;
+      html +=
+        '<div class="set-row">' +
+        checkBtn +
+        '<input type="number" inputmode="decimal" value="' + (weightVal || '') + '" placeholder="lbs" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'weight\',this.value)">' +
+        '<input type="number" inputmode="numeric" value="' + (s.reps || '') + '" placeholder="reps" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'reps\',this.value)">' +
+        '<input type="number" inputmode="decimal" value="' + (s.rpe || '') + '" placeholder="RPE" min="1" max="10" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'rpe\',this.value)">' +
+        '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
+        '</div>' +
+        '<div class="weight-adj">' +
+        '<button onclick="adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',5)">+5</button>' +
+        '<button onclick="adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',10)">+10</button>' +
+        '<button onclick="adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',15)">+15</button>' +
+        '<button onclick="promptCustomWeight(\'' + sec + '\',' + ei + ',' + si + ')">+?</button>' +
+        '</div>';
+    }
   });
   html += '<div class="exercise-actions"><button class="btn btn-ghost btn-sm" onclick="addSet(\'' + sec + '\',' + ei + ')">+ Set</button></div></div>';
   return html;
@@ -698,9 +1213,63 @@ function openGymMode() {
 }
 
 function closeGymMode() {
+  if (gymPaused) {
+    gymPaused = false;
+    restPausedAt = 0;
+    if (current) current.startTime += (Date.now() - gymPauseStart);
+    startTimer();
+  }
   gymSkipRest();
   document.getElementById('gymOverlay').classList.remove('open');
   renderActive();
+}
+
+function gymTogglePause() {
+  var btn = document.getElementById('gymPauseBtn');
+  if (gymPaused) {
+    gymPaused = false;
+    if (current) current.startTime += (Date.now() - gymPauseStart);
+    startTimer();
+    if (restPausedAt > 0) {
+      restRemaining = restPausedAt;
+      restPausedAt = 0;
+      if (restInterval) clearInterval(restInterval);
+      restInterval = setInterval(function() {
+        restRemaining--;
+        var timeEl = document.getElementById('gymRestTime');
+        var barEl = document.getElementById('gymRestBar');
+        if (timeEl) timeEl.textContent = pad(Math.floor(restRemaining / 60)) + ':' + pad(restRemaining % 60);
+        if (barEl) barEl.style.width = (restRemaining / restTotal * 100) + '%';
+        if (restRemaining <= 0) {
+          gymSkipRest();
+          if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+          gymRenderContent();
+        }
+      }, 1000);
+      var barEl = document.getElementById('gymRestBar');
+      if (barEl) {
+        barEl.style.transition = 'none';
+        void barEl.offsetWidth;
+        barEl.style.transition = 'width 1s linear';
+      }
+    }
+    if (btn) { btn.textContent = '⏸'; btn.classList.remove('paused'); }
+  } else {
+    gymPaused = true;
+    gymPauseStart = Date.now();
+    stopTimer();
+    if (restInterval) {
+      clearInterval(restInterval);
+      restInterval = null;
+      restPausedAt = restRemaining;
+      var barEl = document.getElementById('gymRestBar');
+      if (barEl) {
+        barEl.style.transition = 'none';
+        barEl.style.width = (restRemaining / restTotal * 100) + '%';
+      }
+    }
+    if (btn) { btn.textContent = '▶'; btn.classList.add('paused'); }
+  }
 }
 
 function gymRenderContent() {
@@ -729,14 +1298,34 @@ function gymRenderContent() {
   var badgeClass = item.isWarmup ? 'warmup' : 'working';
   var badgeLabel = item.isWarmup ? 'Warm-Up' : 'Working Set';
 
+  var gymImgId = 'gym-wu-img-' + gymExIdx;
   var html =
     '<div class="gym-section-badge ' + badgeClass + '">' + badgeLabel + '</div>' +
     '<div class="gym-ex-name">' + esc(ex.name) +
     (ex._notes ? '<div class="gym-ex-notes">' + esc(ex._notes) + '</div>' : '') +
-    '</div>' +
+    '</div>';
+
+  if (item.isWarmup) {
+    html +=
+      '<div class="gym-warmup-img-wrap">' +
+      '<div class="gym-warmup-img-placeholder">&#127939;</div>' +
+      '<img id="' + gymImgId + '" class="gym-warmup-img" src="" alt="' + esc(ex.name) + '">' +
+      '</div>';
+  }
+
+  html +=
     '<div class="gym-set-counter">' + (gymSetIdx + 1) + '</div>' +
-    '<div class="gym-set-of">of ' + sets.length + ' sets</div>' +
-    '<div class="gym-target"><strong>' + weightTxt + '</strong> &nbsp;&times;&nbsp; <strong>' + repsTxt + '</strong></div>';
+    '<div class="gym-set-of">of ' + sets.length + ' sets</div>';
+
+  if (!item.isWarmup) {
+    html += '<div class="gym-target"><strong>' + weightTxt + '</strong> &nbsp;&times;&nbsp; <strong>' + repsTxt + '</strong></div>';
+    var gymLp = lastPerformance(ex.name);
+    if (gymLp) {
+      html += '<div class="gym-last-perf">Last: ' +
+        lastPerfSetsHtml(gymLp, 'text-decoration:line-through;color:#444') +
+        '</div>';
+    }
+  }
 
   if (allDone) {
     html += '<div class="gym-complete-msg">&#10003; All Sets Complete!</div>';
@@ -746,6 +1335,15 @@ function gymRenderContent() {
       html += '<button class="gym-done-btn all-done" onclick="closeGymMode()">Workout Done &rarr;</button>';
     }
   } else {
+    if (!item.isWarmup) {
+      html +=
+        '<div class="gym-weight-adj">' +
+        '<button onclick="gymAdjustWeight(5)">+5</button>' +
+        '<button onclick="gymAdjustWeight(10)">+10</button>' +
+        '<button onclick="gymAdjustWeight(15)">+15</button>' +
+        '<button onclick="gymPromptCustomWeight()">+?</button>' +
+        '</div>';
+    }
     html += '<button class="gym-done-btn" onclick="gymMarkSetDone()">&#10003; &nbsp; SET DONE</button>';
   }
 
@@ -756,6 +1354,7 @@ function gymRenderContent() {
     '</div>';
 
   document.getElementById('gymContent').innerHTML = html;
+  if (item.isWarmup) loadExerciseImage(ex.name, gymImgId);
 
   /* Set pips */
   var pipsHtml = sets.map(function(s, si) {
@@ -785,16 +1384,16 @@ function gymMarkSetDone() {
   if (next >= 0) {
     gymSetIdx = next;
     gymRenderContent();
-    var restSecs = exs[gymExIdx].ex._rest || 90;
-    gymStartRest(restSecs, exs, gymExIdx, next);
+    var restSecs = exs[gymExIdx].ex._rest != null ? exs[gymExIdx].ex._rest : settings.defaultRest;
+    if (restSecs > 0) gymStartRest(restSecs, exs, gymExIdx, next);
   } else {
     /* All sets in this exercise done */
     gymSetIdx = sets.length - 1;
     gymRenderContent();
-    /* Shorter transition rest before next exercise */
+    /* Transition rest before next exercise — skip for warmup exercises */
     var nextExIdx = gymExIdx + 1;
-    if (nextExIdx < exs.length) {
-      gymStartRest(60, exs, gymExIdx, -1);
+    if (nextExIdx < exs.length && !exs[gymExIdx].isWarmup) {
+      gymStartRest(settings.defaultRest, exs, gymExIdx, -1);
     }
   }
 }
@@ -866,6 +1465,7 @@ function gymStartRest(secs, exs, curExIdx, nextSetIdx) {
 function gymSkipRest() {
   if (restInterval) { clearInterval(restInterval); restInterval = null; }
   restRemaining = 0;
+  restPausedAt = 0;
   var overlay = document.getElementById('gymRestOverlay');
   if (overlay) overlay.classList.remove('show');
 }
@@ -990,7 +1590,7 @@ function savePlan() {
     : (data.exercises || []).length;
   plans.unshift({ id: Date.now(), name: name, data: data, days: dayCount, exercises: exCount });
   save();
-  renderPlansInModal();
+  renderHomePlans();
   document.getElementById('pasteInput').value = '';
 }
 
@@ -998,27 +1598,79 @@ function deletePlan(id) {
   if (!confirm('Delete this plan?')) return;
   plans = plans.filter(function(p) { return p.id !== id; });
   save();
-  renderPlansInModal();
+  renderHomePlans();
 }
 
 function loadPlan(id) {
   var plan = plans.find(function(p) { return p.id === id; });
   if (!plan) return;
+  currentPlanId = id;
   var data = plan.data;
   if (Array.isArray(data)) {
-    if (data.length === 1) { loadWorkoutFromPaste(data[0]); return; }
-    _pendingDays = data;
-    document.getElementById('savedPlansSection').style.display = 'none';
-    showDayPicker(data);
+    if (data.length === 1) { currentPlanDayIdx = 0; loadWorkoutFromPaste(data[0]); return; }
+    showPlanDayModal(plan, data);
   } else {
+    currentPlanDayIdx = 0;
     loadWorkoutFromPaste(data);
   }
 }
 
-function renderPlansInModal() {
-  var section = document.getElementById('savedPlansSection');
-  var list = document.getElementById('savedPlansList');
-  if (plans.length === 0) { section.style.display = 'none'; return; }
+function showPlanDayModal(plan, days) {
+  _pendingDays = days;
+  /* Compute last-done date for each day from workout history */
+  var daysWithMeta = days.map(function(day, idx) {
+    var lastDone = null;
+    for (var wi = 0; wi < workouts.length; wi++) {
+      var w = workouts[wi];
+      if (w._planId === plan.id && w._planDayName === day.name) {
+        lastDone = w.date; break; /* workouts newest-first */
+      }
+    }
+    return { day: day, idx: idx, lastDone: lastDone };
+  });
+  /* Sort: no last-done first, then by last-done ascending (most recent last = bottom) */
+  daysWithMeta.sort(function(a, b) {
+    if (!a.lastDone && !b.lastDone) return 0;
+    if (!a.lastDone) return -1;
+    if (!b.lastDone) return 1;
+    return new Date(a.lastDone) - new Date(b.lastDone);
+  });
+  var html = daysWithMeta.map(function(item) {
+    var day = item.day;
+    var allEx = day.exercises || [];
+    var detected = allEx.filter(function(ex) { return /^\s*WARM[\s\-]*UP/i.test(ex.notes || ''); });
+    var wc = (day.warmups || []).length + detected.length;
+    var ec = allEx.length - detected.length;
+    var meta = ec + ' exercise' + (ec !== 1 ? 's' : '') + (wc ? ' + ' + wc + ' warm-up' + (wc !== 1 ? 's' : '') : '');
+    var lastStr = item.lastDone ? new Date(item.lastDone).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : 'Not done yet';
+    return '<li class="day-picker-item" onclick="pickPlanDay(' + item.idx + ')">' +
+      '<div style="flex:1;min-width:0"><div class="day-name">' + esc(day.name || 'Day ' + (item.idx + 1)) + '</div>' +
+      '<div class="day-meta">' + meta + '</div></div>' +
+      '<div class="day-last-done' + (item.lastDone ? ' done' : '') + '">' + lastStr + '</div>' +
+      '</li>';
+  }).join('');
+  document.getElementById('planDayModalTitle').textContent = plan.name || 'Select Day';
+  document.getElementById('planDayList').innerHTML = html;
+  document.getElementById('planDayModal').classList.add('open');
+}
+
+function pickPlanDay(idx) {
+  if (!_pendingDays || !_pendingDays[idx]) return;
+  currentPlanDayIdx = idx;
+  document.getElementById('planDayModal').classList.remove('open');
+  loadWorkoutFromPaste(_pendingDays[idx]);
+}
+
+function closePlanDayModal() {
+  document.getElementById('planDayModal').classList.remove('open');
+  _pendingDays = null;
+}
+
+function renderHomePlans() {
+  var section = document.getElementById('homePlansSection');
+  var list = document.getElementById('homePlansList');
+  // Only show on the idle/no-workout home state: no active workout AND plans exist.
+  if (current || plans.length === 0) { section.style.display = 'none'; return; }
   section.style.display = '';
   list.innerHTML = plans.map(function(p) {
     var meta = p.days > 1 ? p.days + ' days' : (p.exercises ? p.exercises + ' exercises' : '');
@@ -1043,7 +1695,6 @@ function openPasteModal() {
   document.getElementById('dayPickerArea').style.display = 'none';
   document.getElementById('pasteModal').classList.add('open');
   _pendingDays = null;
-  renderPlansInModal();
   setTimeout(function() { document.getElementById('pasteInput').focus(); }, 150);
 }
 
@@ -1055,7 +1706,6 @@ function closePasteModal() {
 function backToPasteInput() {
   document.getElementById('pasteInputArea').style.display = '';
   document.getElementById('dayPickerArea').style.display = 'none';
-  renderPlansInModal();
   _pendingDays = null;
 }
 
@@ -1092,12 +1742,13 @@ function submitPaste() {
 
 function showDayPicker(days) {
   document.getElementById('pasteInputArea').style.display = 'none';
-  document.getElementById('savedPlansSection').style.display = 'none';
   document.getElementById('dayPickerArea').style.display = '';
   var html = '';
   days.forEach(function(day, idx) {
-    var ec = day.exercises.length;
-    var wc = (day.warmups || []).length;
+    var allEx = day.exercises || [];
+    var detectedWarmups = allEx.filter(function(ex) { return /^\s*WARM[\s\-]*UP/i.test(ex.notes || ''); });
+    var wc = (day.warmups || []).length + detectedWarmups.length;
+    var ec = allEx.length - detectedWarmups.length;
     var meta = ec + ' exercise' + (ec !== 1 ? 's' : '') + (wc ? ' + ' + wc + ' warm-up' + (wc !== 1 ? 's' : '') : '');
     html += '<li class="day-picker-item" onclick="pickDay(' + idx + ')">' +
       '<span class="day-name">' + esc(day.name || 'Day ' + (idx + 1)) + '</span>' +
@@ -1117,28 +1768,40 @@ function loadWorkoutFromPaste(data) {
     if (!wu.name) return;
     var n = parseInt(wu.sets) || 2;
     var r = wu.reps ? String(wu.reps) : '';
+    var lp = lastPerformance(wu.name);
     var sets = [];
-    for (var j = 0; j < n; j++) sets.push({ weight: '', reps: r, rpe: '' });
+    for (var j = 0; j < n; j++) {
+      var lpW = lp && lp.sets[j] ? lp.sets[j].weight || '' : '';
+      sets.push({ weight: lpW, reps: r, rpe: '' });
+    }
     if (!knownExercises.includes(wu.name)) knownExercises.push(wu.name);
     warmups.push({ name: wu.name, sets: sets, _rest: wu.rest || null, _notes: wu.notes || '' });
   });
   (data.exercises || []).forEach(function(ex) {
     if (!ex.name) return;
-    var n = parseInt(ex.sets) || 3;
+    var isWarmup = /^\s*WARM[\s\-]*UP/i.test(ex.notes || '');
+    var n = parseInt(ex.sets) || (isWarmup ? 2 : 3);
     var r = ex.reps ? String(ex.reps) : '';
+    var lp = lastPerformance(ex.name);
     var sets = [];
-    for (var k = 0; k < n; k++) sets.push({ weight: '', reps: r, rpe: '' });
+    for (var k = 0; k < n; k++) {
+      var lpW = lp && lp.sets[k] ? lp.sets[k].weight || '' : '';
+      sets.push({ weight: lpW, reps: r, rpe: '' });
+    }
     if (!knownExercises.includes(ex.name)) knownExercises.push(ex.name);
-    exercises.push({ name: ex.name, sets: sets, _rest: ex.rest || null, _notes: ex.notes || '' });
+    if (isWarmup) {
+      warmups.push({ name: ex.name, sets: sets, _rest: 0, _notes: ex.notes || '' });
+    } else {
+      exercises.push({ name: ex.name, sets: sets, _rest: ex.rest || null, _notes: ex.notes || '' });
+    }
   });
 
-  if (exercises.length === 0) {
+  if (warmups.length === 0 && exercises.length === 0) {
     var errEl = document.getElementById('pasteError');
     errEl.textContent = 'No valid exercises found. Each exercise needs a "name" field.';
     errEl.className = 'paste-error show';
     document.getElementById('pasteInputArea').style.display = '';
     document.getElementById('dayPickerArea').style.display = 'none';
-    renderPlansInModal();
     return;
   }
 
@@ -1147,6 +1810,11 @@ function loadWorkoutFromPaste(data) {
   stopTimer();
   var now = Date.now();
   current = { id: now, date: new Date(now).toISOString(), startTime: now, warmups: warmups, exercises: exercises };
+  /* Tag with plan provenance so history can match days and smart-start can track cycles */
+  if (currentPlanId) {
+    current._planId = currentPlanId;
+    current._planDayName = data.name || '';
+  }
   startTimer();
   save();
   closePasteModal();
@@ -1162,6 +1830,15 @@ function loadWorkoutFromPaste(data) {
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
 /* ── Init ───────────────────────────────────────── */
+applyTheme();              // head script applies before paint; this keeps DOM in sync
+syncSettingsUI();
+if (settings.keepAwake) acquireWakeLock();
+
+/* Wake Lock is auto-released when the tab is hidden — re-acquire on return if enabled. */
+document.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'visible' && settings.keepAwake) acquireWakeLock();
+});
+
 renderActive();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function() {});
 </script>

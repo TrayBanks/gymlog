@@ -1,0 +1,741 @@
+# PLAN_STATE.md — GymLog Feature Set
+
+**Integration branch:** `claude/gymlog-feature-set`
+**Authoritative remote:** https://github.com/TrayBanks/gymlog
+**Rule that cannot be relaxed:** No agent merges/pushes to `main` without explicit user approval in chat.
+
+This file + `git log --oneline -10` on the integration branch are the two
+required state channels. If they disagree, STOP and report.
+
+---
+
+## Phase 1 Findings (verified against actual code, not the prompt's snapshot)
+
+| Claim in prompt | Verified state |
+|---|---|
+| Home view `#log` with active workout | ✅ `index.html:334` — contains `#activeWorkout` + `#noWorkout` empty state |
+| Paste entry → `#pasteModal` with nested `#savedPlansSection` | ✅ `index.html:381` modal, `:384` nested saved-plans section (`display:none` until plans exist) |
+| Gym mode = overlay `#gymOverlay`, `openGymMode()`/`closeGymMode()` | ✅ `:425`, `:682`, `:700` |
+| Gym overlay has its OWN scroll container | ✅ `.gym-main` (`:173`) is `flex:1;overflow-y:auto`; `.gym-header` (`:153`) is `flex-shrink:0` ABOVE it → **gym timer is ALREADY pinned** relative to gym scroll context |
+| `_done` per set | ✅ EXISTS. **READ** by normal render (`:657` opacity:.5), **READ+WRITTEN** only by gym mode (`:774`). **No normal-mode control writes `_done`.** New sets don't init it (undefined→falsy). |
+| Settings/theme/wakeLock keys | ✅ NONE exist — all net new |
+| localStorage keys | `gymlog_workouts`, `gymlog_exercises`, `gymlog_plans` (`:456-458`); settings key is NEW |
+
+### Critical determinations
+- **Feature 4 (check-off) = new UI on EXISTING state**, not new state. `_done` already
+  exists, is already read by both renderers, and is already written by gym mode. Step 4
+  adds a normal-mode write control + condensed/struck-through styling, in both modes.
+- **Feature 3 (pinned timer): gym mode is already pinned.** The real work is normal mode,
+  where `.workout-timer` currently scrolls away with the page. Gym-mode work = verify + keep.
+- **Feature 5 dependency on Feature 4 is SOFT, not hard.** Historical `gymlog_workouts`
+  entries *already* carry `_done=true` for any sets completed via gym mode, so Feature 5 can
+  read existing completion data even before Feature 4 ships. Feature 4 matters because it lets
+  users populate the completed/attempted distinction reliably in BOTH modes going forward, and
+  it generates clean test data for Feature 5. Sequencing 5 after 4 stands; the dependency is
+  one of data-quality/sequencing, not compilation.
+- In-progress `current` workout is in-memory only (not persisted until `finishWorkout`).
+  `_done` on the active workout lives in `current` and only durably lands in history on finish.
+
+---
+
+## Plan (5 steps → 5 features) — user chose to split F2/F3
+
+| Step | Feature | Status |
+|------|---------|--------|
+| 1 | F1 — Settings panel (wake-lock toggle, light/dark theme), new `gymlog_settings` key | ✅ verified |
+| 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | ✅ verified |
+| 3 | F3 — Persistent pinned workout timer (both modes) | ✅ verified |
+| 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | ✅ verified |
+| 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | ✅ verified |
+
+Order rationale:
+- **Step 1 first** because the theme system refactors global `:root` CSS vars; landing it first
+  means every later step is built against a theme-aware baseline (no rework).
+- **Steps 2 & 3** both touch the `#log` view but in mutually-exclusive states (idle = saved
+  plans; active = pinned timer); split per user request, run F2 then F3.
+- **Step 4** before **Step 5** per the soft dependency above.
+
+## Locked decisions (user-approved, Phase 1)
+1. **Gym mode stays always-dark** even under light theme. Theme affects the normal app only.
+2. **Saved plans show in the idle / no-workout state** on `#log`; hidden while a workout is active.
+3. **5 steps** (F2 and F3 are separate steps).
+
+---
+
+## Step Log
+### Step 1 — Settings panel (F1)
+- Status: ✅ VERIFIED by orchestrator (gate passed). Outstanding: 3 live-browser checks
+  deferred to the final preview pass — (1) light theme visual render, (2) no-flash on cold
+  reload, (3) real wakeLock grant/release/re-acquire on localhost. These are live-only, not
+  logic defects.
+- Commits:
+  - `7b91710` [step 1] add settings modal with theme + wake lock
+  - `f7ed8e4` [step 1] bump sw cache to v6
+- Diff summary:
+  - `sw.js`: `CACHE_NAME` `gymlog-v5` → `gymlog-v6`.
+  - `index.html`:
+    - New `<head>` inline script (before `<style>`) applies `data-theme="light"`
+      from `gymlog_settings` BEFORE first paint (no flash). Dark = default (no attr).
+    - New `:root[data-theme="light"]{…}` palette (light bg/surface/card, dark text,
+      adjusted muted/border/warmup; `--primary` purple kept). Drives header, nav,
+      cards, modals, stats, forms, FAB, plans — all via existing CSS vars.
+    - Header: gear `icon-btn` next to Export → `openSettings()`.
+    - New `#settingsModal` (reuses `.modal-overlay`/`.modal`): Theme segmented
+      control (Light/Dark) + Keep-screen-awake toggle switch. New CSS:
+      `.icon-btn`, `.settings-row`, `.switch`, `.theme-seg`.
+    - New JS: `SETTINGS_KEY='gymlog_settings'`; `loadSettings()/saveSettings()`
+      (separate from `save()`, which still writes workouts/exercises/plans);
+      `applyTheme()/setTheme()`; `acquireWakeLock()/releaseWakeLock()/toggleKeepAwake()`
+      with `WAKE_SUPPORTED = 'wakeLock' in navigator` feature-detection;
+      `syncSettingsUI()`, `openSettings()/closeSettings()`.
+    - Init: `applyTheme()` + `syncSettingsUI()` + acquire wake lock if enabled +
+      `visibilitychange` listener that re-acquires the lock when the page becomes
+      visible AND `keepAwake` is on.
+- Worker verification (gym open / gym closed):
+  - GYM CLOSED: Settings reachable via header gear; toggling theme to Light recolors
+    `#log`/history/stats/modals/FAB via the shared CSS vars; persists across reload
+    (head script applies before paint → no dark flash); Dark restores. Verified by
+    code trace + a node simulation of loadSettings/saveSettings/applyTheme/setTheme:
+    defaults {theme:dark,keepAwake:false}; setTheme('light') sets attr + persists
+    `{"theme":"light",…}`; setTheme('dark') removes attr + persists; reload of a
+    persisted `{light,keepAwake:true}` loads back correctly.
+  - GYM OPEN: gym mode CSS (`#gymOverlay` and children) uses hardcoded near-black
+    `#020408` / brand `#6C63FF` etc. — grep confirms NO `var(--bg/--surface/--card/
+    --text/--border)` inside the gym block, so switching to light theme leaves gym
+    mode dark/high-contrast and fully functional (set-done, rest timer, pips, exit
+    all unaffected). Theme attr lives on `documentElement`; gym overlay simply doesn't
+    consume the themed vars. Locked decision (gym always-dark) upheld.
+- WAKE LOCK CAVEAT (observed/known): Screen Wake Lock requires a secure context.
+  On the preview `http://localhost:4000` it IS a secure context, so the toggle is
+  enabled and `navigator.wakeLock.request('screen')` is expected to succeed (could
+  not click in a real browser in this env — no headless Chrome — so acquisition was
+  validated by code trace + node simulation of acquire/release/re-acquire, not a live
+  grant). On non-secure origins or unsupported browsers, `WAKE_SUPPORTED` is false →
+  the toggle is disabled and the description shows a "needs HTTPS or localhost" note;
+  `request()` rejections are caught and leave state consistent. The OS may also drop
+  the lock on low battery; the `release` event handler resets `wakeLock=null` so a
+  later visibilitychange can re-acquire.
+- Auditor findings: PASS — Theme + wake lock are correct, additive-only (165 insertions / 0 deletions in index.html), gym mode isolation upheld, cache bumped. No blocking issues; outstanding items are live-browser checks only.
+  Confirmed:
+  - Theme completeness: light block (`index.html:34-42`) overrides every surface var
+    consumed by the normal app — body/bg (`:43`), header (`:44`), nav (`:77-79`),
+    `.workout-card` (`:85`), `.exercise-block` (`:105`), `.modal-overlay`/`.modal`
+    (`:125-128`, modal bg=`var(--bg)`), `.stat-box` (`:132`), form inputs (`:95,101`),
+    `.fab` (`:119`), `.plan-item` (`:174`), `.day-picker-item` (`:154`), `.workout-timer`
+    (`:160`). No normal-app element hardcodes a dark surface/text color. The only
+    `color:#fff` outside gym (`:49,50,74,119`) sits on colored (`--primary`/`--danger`)
+    backgrounds → correct in both themes.
+  - Contrast (computed WCAG): text `#1e2433` on bg/surface/card = 14.2/15.5/13.6:1 (AAA);
+    muted `#64708a` = 4.36–4.97:1 (AA); primary `#6C63FF` on white & white-on-primary =
+    4.32:1 (AA); warmup `#b45309` on bg = 4.61:1 (AA). Nothing unreadable.
+  - No-flash: head inline script (`:12-21`) runs before `<style>`/body, sets
+    `data-theme="light"` from `gymlog_settings`. Robust to absent/empty/corrupt/wrong-type
+    key (try/catch + `s && s.theme==='light'` short-circuit) — node-simulated all cases →
+    default dark, never throws. `--radius` correctly inherits from base `:root` (not
+    redefined in light block).
+  - Wake Lock LOGIC sound: `WAKE_SUPPORTED='wakeLock' in navigator` (`:586`); acquire on
+    enable & release on disable (`toggleKeepAwake`, `:617`); re-acquire on
+    `visibilitychange` when visible AND `keepAwake` (`:1328`); `request()` rejection
+    `.catch`'d → state stays consistent (`:594`); `release` event resets `wakeLock=null`
+    so a later re-acquire works; unsupported → toggle disabled + explanatory note
+    (`syncSettingsUI`, `:599-608`). Cannot live-grant in this env (no headless browser).
+  - State isolation: `saveSettings()` writes ONLY `gymlog_settings`; `save()` (`:558-562`)
+    writes ONLY workouts/exercises/plans. No overlap → settings cannot clobber workout data.
+  - Gym parity (LOCKED always-dark): gym CSS block (`:184-356`) and gym render JS
+    (`:865`) use ONLY hardcoded colors (`#020408`, `#6C63FF`, `#333`, etc.) — grep
+    confirms ZERO `var(--bg/--surface/--card/--text/--border/--muted)` in the gym range.
+    Theme attr lives on `documentElement`; gym overlay consumes none of the themed vars,
+    so switching to light cannot alter gym mode whether it is open or closed.
+  - Regression: diff is 165 insertions / 0 deletions in index.html (only removed line in
+    the whole change is the sw.js CACHE_NAME). No existing function, signature, or shared
+    global modified; header change is additive markup. Start-workout/timer/paste/plans/
+    gym/history/stats/export untouched.
+  - Cache: `sw.js` `gymlog-v5` → `gymlog-v6` (`f7ed8e4`); nothing else in sw.js changed.
+    Preview on :4000 serves the new code (settingsModal present) and v6.
+  Non-blocking notes / what a node sim CANNOT prove (left for real-browser check at preview):
+  - Live visual rendering/contrast under an actual light-theme paint (computed ratios are
+    strong, but real device rendering unverified).
+  - Real "no dark flash" on a cold reload (logic guarantees pre-paint apply; not observed live).
+  - Real `navigator.wakeLock.request('screen')` GRANT on localhost and RELEASE on toggle-off
+    / re-acquire on tab-return — logic is correct by read; no headless browser to click it.
+- NOTE for auditor: (1) confirm in a real browser that Light theme is fully readable
+  across every surface and that there is genuinely no dark flash on reload; (2) live-
+  verify wakeLock actually grants on localhost and releases on toggle-off; (3) re-confirm
+  gym mode stays dark when theme is switched WHILE gym mode is open.
+
+### Step 2 — Saved plans on home, idle state (F2)
+- Status: ✅ VERIFIED by orchestrator (gate passed). Outstanding: live render of the home plans
+  area + the from-home multi-day day-picker open/close visuals — deferred to final preview pass.
+- Commits:
+  - `d71b79f` [step 2] render saved plans on home idle view; remove plans list from paste modal
+  - `4b891f6` [step 2] bump sw cache to v7
+- PASTE-MODAL DECISION: **REMOVED** the saved-plans block from the paste modal
+  (the recommended cleaner option). Plans now live in exactly one place — home.
+  The paste modal keeps only: intro text + example + textarea + Load Workout /
+  Save Plan / Cancel buttons + the multi-day day-picker area. No empty/leftover
+  saved-plans container remains in the modal.
+- Diff summary (15 insertions / 17 deletions in index.html; sw.js +1/-1):
+  - `index.html`:
+    - NEW `#homePlansSection.plans-section` (with `#homePlansList`) placed inside
+      `<div id="log">`, ABOVE `#noWorkout` (`index.html:379-382`), `display:none`
+      by default. Reuses the EXISTING `.plans-section` / `.plans-section-header` /
+      `.plan-item` CSS (all `var(--…)` driven → theme-correct in light & dark; no
+      hardcoded colors added).
+    - REMOVED the nested `#savedPlansSection` block (header + `#savedPlansList` +
+      `<hr class="modal-divider">`) from `#pasteModal`.
+    - RENAMED `renderPlansInModal()` → `renderHomePlans()`; repointed to
+      `#homePlansSection`/`#homePlansList`; changed the guard from
+      `plans.length===0` to **`current || plans.length===0`** so it hides during an
+      active workout AND when no plans exist. Card markup (Load + 🗑 delete, name,
+      meta) unchanged — same `.plan-item` template, same `loadPlan(id)` /
+      `deletePlan(id)`.
+    - `renderActive()` now calls `renderHomePlans()` at the top (before the
+      `!current` early-return) so EVERY state transition re-evaluates plan
+      visibility (start/finish/cancel workout, add/remove set, load-from-paste).
+    - `loadPlan()` multi-day branch: replaced the now-defunct
+      `#savedPlansSection` hide with `pasteModal.classList.add('open')` so a
+      multi-day plan loaded FROM HOME opens the modal that hosts the day-picker
+      (previously the modal was already open because plans lived inside it).
+    - Removed the `renderPlansInModal()` calls from `openPasteModal()` and
+      `backToPasteInput()` (nothing to render in the modal anymore) and the
+      stale `#savedPlansSection` hide from `showDayPicker()` and the
+      `renderPlansInModal()` call from the `loadWorkoutFromPaste()` error branch.
+    - `savePlan()` / `deletePlan()` now call `renderHomePlans()` (so a newly
+      saved plan is on home the moment the modal closes; a deletion updates home
+      and hides the section at zero).
+  - `sw.js`: `CACHE_NAME` `gymlog-v6` → `gymlog-v7`.
+- Verification (no headless browser in env — rigorous code trace + node simulation
+  of the visibility predicate and a syntax-parse of both inline `<script>` blocks;
+  preview server on :4000 confirmed serving the new code, `homePlansSection`
+  present / `savedPlansSection` absent, sw `gymlog-v7`):
+  - Visibility predicate `current||plans.length===0 ? hide : show` simulated for all
+    4 states → idle+plans=SHOWN, idle+no-plans=HIDDEN, active+plans=HIDDEN,
+    active+no-plans=HIDDEN. Matches the locked decision exactly.
+  - Item-3 scenarios (all traced through `renderActive`→`renderHomePlans`):
+    Idle+plans → visible on home ✓. Idle+no-plans → section hidden, no clutter ✓.
+    Active workout → hidden ✓. Save new plan via modal (idle) → `renderHomePlans`
+    populates section behind modal; visible after close ✓. Delete from home →
+    list re-renders; hits zero → section hides ✓. Load from home: single-day →
+    `loadWorkoutFromPaste` starts workout (sets `current`, `renderActive` hides
+    plans) ✓; multi-day → opens paste modal + `showDayPicker` → `pickDay` →
+    `loadWorkoutFromPaste` ✓.
+  - GYM CLOSED + idle → plans on home (predicate SHOWN). PASS.
+  - GYM OPEN chain: gym mode only opens with an active workout, at which point
+    `current` is set so home plans are ALREADY hidden. `openGymMode`/`closeGymMode`
+    never touch `#homePlansSection`; `closeGymMode` calls `renderActive` (still
+    active → stays hidden). `finishWorkout`/`cancelWorkout` both `closeGymMode()`
+    if the overlay is open, null `current`, then `renderActive` → plans reappear.
+    No plan list bleeds into the active or gym overlay views. PASS (both modes).
+  - Both inline script blocks parse via `new Function()`; no stale references to
+    `renderPlansInModal`/`savedPlansSection`/`savedPlansList` remain (grep clean).
+- Auditor findings: PASS — Plans correctly moved to the idle home state only; zero dangling
+  refs to the removed modal section; every `current` mutation re-renders home plans; both
+  day-picker entry points work; diff is tightly scoped (14 ins / 16 del in index.html).
+  Confirmed:
+  - DANGLING-REF GREP (highest risk): ZERO matches for `savedPlansSection` /
+    `savedPlansList` / `renderPlansInModal` anywhere in index.html. All five old call
+    sites (`openPasteModal`, `backToPasteInput`, `showDayPicker`, `loadPlan` multi-day,
+    `loadWorkoutFromPaste` error branch) are clean — no `getElementById('savedPlansSection')`
+    survives, so no null-`.style` throw. New IDs `homePlansSection`/`homePlansList` and
+    `renderHomePlans()` resolve consistently (`:379-382`, `:762`, `:1149`, `:1157`, `:1175-1177`).
+  - Idle-only visibility predicate (`:1179`): `if (current || plans.length===0) hide; else show`.
+    Node-simulated all 4 states → idle+plans=SHOW, idle+no-plans=HIDE, active+plans=HIDE,
+    active+no-plans=HIDE. Matches the locked decision exactly.
+  - Every `current` mutation funnels through `renderActive()` (which calls `renderHomePlans()`
+    at `:762`, BEFORE the `!current` early-return so it always runs): `startWorkout` (`:690`),
+    `finishWorkout` both branches (`:695`, `:703`), `cancelWorkout` (`:711`),
+    `loadWorkoutFromPaste` (`:1312`), `closeGymMode` (`:859`). No path mutates `current`
+    without re-rendering. Plans hide on start/load and reappear on finish/cancel.
+  - Multi-day day-picker, BOTH entry points:
+    (a) FAB → `openPasteModal` resets areas + opens modal → `submitPaste` multi-day (`:1238-1239`)
+        sets `_pendingDays` + `showDayPicker`. ✓
+    (b) From home → `loadPlan` multi-day (`:1166-1169`) sets `_pendingDays`, force-opens modal
+        via `classList.add('open')` (same overlay that hosts `#dayPickerArea`), then
+        `showDayPicker`. `showDayPicker` (`:1250-1251`) itself hides `#pasteInputArea` / shows
+        `#dayPickerArea`, so the picker renders regardless of prior area state. `pickDay`
+        (`:1264-1266`) → `loadWorkoutFromPaste`. Back (`:1212`) / Cancel (`:1207`) reset cleanly.
+    FAB-after-home: a subsequent `openPasteModal()` resets `#pasteInputArea` visible /
+    `#dayPickerArea` hidden (`:1200-1201`) → input area shown, NOT stuck on the picker. ✓
+  - Save/delete/load wiring: `savePlan` (`:1149`) and `deletePlan` (`:1157`) call
+    `renderHomePlans()` → new plan appears on home after modal closes; delete re-renders and
+    hides section at zero. Single-day load → `loadWorkoutFromPaste` starts workout. All target
+    functions exist and point at the home IDs.
+  - Theme: home plans reuse the existing var-driven CSS — `.plan-item` (`:174`,
+    `--surface`/`--border`/`--radius`), `.plans-section-header` (`:173`, `--muted`),
+    `.plan-meta` (`:177`, `--muted`); delete-button inline color is `var(--danger)` (`:1188`).
+    No hardcoded color added; correct in light & dark.
+  - Regression scope: 14 ins / 16 del in index.html, all within the plans-move; nothing else
+    (timer, gym mode, Step-1 settings/theme, history, stats, export) touched. No function
+    signature or shared global changed — `renderPlansInModal`→`renderHomePlans` was internal,
+    now zero callers reference the old name. Both inline `<script>` blocks parse via
+    `new Function()`.
+  - Cache: `sw.js` `gymlog-v6` → `gymlog-v7` (`4b891f6`); +1/-1, nothing else in sw.js changed.
+  - Preview on :4000 serves HTTP 200, the new code (`homePlansSection` present /
+    `savedPlansSection` absent = 0), and `gymlog-v7`.
+  Non-blocking notes / unverifiable without a live browser (no headless Chrome in env):
+  - Real DOM render of the home plans area (idle) and its light/dark paint — CSS is shared and
+    unchanged, computed-correct, but live paint not observed.
+  - Real modal open/close visuals for the from-home multi-day path (logic + parse verified;
+    actual on-screen open/picker-render/Back-Cancel transitions not clicked live).
+  - These are live-only confirmations, not logic defects → PASS-with-notes.
+- NOTE for auditor: scrutinize (1) the MULTI-DAY day-picker path when a multi-day
+  plan is loaded FROM HOME — `loadPlan` now force-opens `#pasteModal` before
+  `showDayPicker`; verify the modal opens cleanly, the picker renders, Back/Cancel
+  reset correctly, and a subsequent FAB `openPasteModal` still shows the input
+  area (it resets both areas). (2) The idle↔active show/hide transition relies
+  solely on `renderActive` calling `renderHomePlans`; confirm no path mutates
+  `current` or workout content without going through `renderActive`. (3) Confirm
+  in a real browser the home plans render correctly in BOTH light and dark themes
+  (CSS is shared `var(--…)`, unchanged, but live paint not observed here).
+
+### Step 3 — Persistent pinned workout timer (F3)
+- Status: ✅ VERIFIED by orchestrator (gate passed). Non-blocking note: 71px header-offset is
+  exact at normal font sizes; above ~150% accessibility zoom the timer tucks slightly UNDER the
+  header (safe direction, z-index 5<10). A measured/JS offset is an optional later hardening, not
+  a blocker. Live scroll-catch + flush alignment deferred to final preview pass.
+- Commits:
+  - `2f58ea2` [step 3] pin active workout timer with sticky positioning
+  - `f9bb199` [step 3] bump sw cache to v8
+- Diff summary (4 ins / 2 del in index.html incl. comment; sw.js +1/-1):
+  - `index.html`: ONE CSS rule changed — `.workout-timer` (`:164`) gained
+    `position:sticky; top:calc(71px + var(--safe-top)); z-index:5` (prepended;
+    everything else — `background:var(--surface)`, border, padding, margin-bottom,
+    flex layout — unchanged). Added an explanatory CSS comment above the rule.
+    NO JS change: `renderActive()` still emits the same `.workout-timer` markup with
+    `#workoutTimer` intact; the `startTimer()` interval (`:642`, updates `#workoutTimer`
+    `:647` and `#gymOverallTimer` `:649`) is untouched.
+  - `sw.js`: `CACHE_NAME` `gymlog-v7` → `gymlog-v8`.
+- POSITIONING APPROACH + REASONING:
+  - Chose **`position:sticky` on the existing `.workout-timer` card** (least invasive:
+    one CSS rule, no DOM/JS restructure, no new wrapper). Rejected alternatives:
+    `position:fixed` (would need manual width/left math against the 16px `.view` padding
+    and breaks out of normal flow, leaving a collapse/jump where the card was) and
+    restructuring `#log` into its own flex scroll container (large, risks regressing
+    Step 2's home-plans idle layout and the body-level sticky header). Sticky keeps the
+    card in normal flow so layout above/below is unaffected; it simply "catches" at the
+    offset once scrolled to.
+  - **What pins:** ONLY the timer bar. The Discard/Finish action row (above it) and the
+    GYM MODE button + exercises (below it) scroll normally. Decision: keep the pinned
+    element compact so it never eats a small phone's screen; the timer is the one thing
+    that must stay glanceable. Discard/Finish are deliberate actions, fine to scroll to.
+- HEADER-OFFSET / SAFE-AREA HANDLING:
+  - Body is the scroll container; `header` is `position:sticky;top:0;z-index:10` (`:44`)
+    with `padding:16px 20px; padding-top:calc(16px + var(--safe-top))` and a 1px
+    `border-bottom`. Its tallest content-row child is the gear `.icon-btn` at 38px
+    (`:54`; Export `.btn-sm`=36px `:52`, h1≈24px) → header height (excluding inset) =
+    16 + 38 + 16 + 1 = **71px**, ON TOP OF the `safe-top` the header adds via padding-top.
+  - Sticky `top:calc(71px + var(--safe-top))` therefore lands the timer's top edge flush
+    with the header's bottom edge: no gap, no hide-under-header. `--safe-top` is counted
+    once here (the header counts it once in its own padding; these are two different boxes,
+    not a double-count) so on Fold 5 cover / notched phones the timer drops by exactly the
+    inset, same as the header. On a non-inset display `--safe-top`=0 → `top:71px`, still flush.
+  - **Stacking:** timer `z-index:5` < header `z-index:10`, so if sub-pixel rounding ever
+    let them touch, the timer tucks UNDER the header (correct), never over it. Because the
+    offset equals the header height they don't actually overlap in normal cases.
+  - **Background / see-through:** the card keeps its opaque `var(--surface)` fill + 1px
+    `var(--border)` (solid in BOTH light `#ffffff` and dark `#1e293b`), so exercise rows
+    scrolling behind it are fully covered — no content bleed. Content lives in the same
+    16px-padded `.view` column as the card, so nothing renders in the side gutters either;
+    the only thing ever visible in the flush strip is `var(--bg)`, and there is no strip
+    when offset==header height.
+  - **Small screen:** `@media(max-width:380px)` (`:351`) only overrides `.workout-timer`
+    padding (10px 12px); it does NOT touch position/top/z-index, so sticky still applies on
+    narrow phones. Card height shrinks (smaller padding + 1.8rem timer value `:346`) → less
+    screen eaten while pinned.
+- GYM MODE (verify + keep, per Phase 1):
+  - Gym CSS block (`:184-356`) is NOT in the diff. `.gym-header` (`:193`, `flex-shrink:0`,
+    contains `#gymOverallTimer`) still sits ABOVE `.gym-main` (`:213`, `flex:1;overflow-y:auto`)
+    inside `#gymOverlay` (`flex-direction:column`). The gym overall timer remains pinned in
+    the gym's OWN scroll container — unchanged. My normal-mode sticky rule only affects
+    `.workout-timer`, which does not exist inside the gym overlay (gym renders its own markup).
+    The `#gymOverallTimer` id and its interval update are untouched.
+- Worker verification (no headless browser in env — rigorous CSS/stacking reasoning + offset
+  math + served-code check; LIVE scroll behavior is a real-browser check to confirm at preview):
+  - GYM CLOSED (normal mode): With a long active workout (several exercises/sets), scrolling
+    the body scrolls the action row out under the header; the `.workout-timer` catches at
+    `top:calc(71px + safe-top)` = exactly the header's bottom, staying visible. It does not
+    hide under the header (offset == header height) and does not cover the first exercise
+    (the first exercise block sits BELOW the timer in flow + the timer's 12px margin-bottom;
+    sticky doesn't change document flow, so on initial unscrolled view the first exercise is
+    exactly where it was). Opaque themed background → no content bleed. Light & dark both use
+    var-driven surface/border → correct. PASS by reasoning; live scroll = preview confirm.
+  - GYM OPEN: open gym mode (only possible with an active workout); `.gym-main` scrolls if
+    tall, `.gym-header`/`#gymOverallTimer` stay pinned (pre-existing, untouched). My change
+    is not present in the gym overlay. `openGymMode`/`closeGymMode` unaffected; `closeGymMode`
+    → `renderActive` re-emits the same sticky `.workout-timer`. PASS (both modes), no regression.
+  - Served-code check: preview on :4000 serves the working tree → confirmed serving
+    `position:sticky;top:calc(71px + var(--safe-top))` in index.html and `gymlog-v8` in sw.js.
+- Auditor findings: PASS — Sticky timer is correct at default font size; diff is one CSS rule
+  (`.workout-timer`, `index.html:164`) + cache bump; ancestor chain has NO overflow so sticky
+  WILL catch; safe-area math is flush (no double-count); stacking, opacity, gym isolation all
+  correct. ONE non-blocking robustness note on the hardcoded 71px (fragile only above ~150%
+  accessibility font zoom). No blocking issues.
+  Confirmed:
+  1. **71px offset — correct NOW.** Header (`index.html:44`) is `display:flex;align-items:center`,
+     `padding:16px 20px; padding-top:calc(16px+safe-top)`, `border-bottom:1px`. Children: `<h1>`
+     (`:367`, font 1.3rem ≈ 25px line box) and a div holding Export `.btn-sm` (`:52`,
+     min-height:36px) + gear `.icon-btn` (`:54`, height:38px + min-height:38px). Tallest content =
+     gear 38px. Header rendered height (excl inset) = 16+38+16+1 = **71px EXACT** (verified by
+     node math at default 16px root). The gear's 38px > h1's ~25px line box > Export's 36px, so
+     the gear genuinely dominates. Offset is correct; timer lands flush, no overlap, no gap.
+  2. **Safe-area — NO double-count, no off-by-safe-top.** Header is sticky `top:0`; its rendered
+     bottom edge = `(16+safe-top)+38+16+1 = 71+safe-top` from the viewport top. Timer
+     `top:calc(71px+safe-top)` catches its top edge at exactly `71+safe-top`. Node-modelled
+     safe-top ∈ {0,24,47,59} → gap = 0px FLUSH in every case. Worker's "two different boxes, not
+     a double-count" claim is CORRECT.
+  3. **Stacking — correct.** Full z-index inventory: header=10 (`:44`), FAB-group=20 (`:118`),
+     modal-overlay=50 (`:125`), gym overlay=100 (`:191`), timer=**5** (`:164`). Timer 5 < header
+     10 → tucks UNDER the header (never over). Nothing else inside `#log`/`#activeWorkout` flow is
+     positioned or has a competing z-index (the only sticky/fixed elements are header, FAB,
+     modal-overlay, gym overlay, and the timer itself). FAB/modals/gym all sit above as intended.
+  4. **Opaque bg — no content bleed.** `.workout-timer` keeps `background:var(--surface)` =
+     `#1e293b` dark / `#ffffff` light (`:25`,`:36`) — both fully opaque hex, no alpha — plus
+     `1px solid var(--border)`. Scrolled exercise rows are fully covered. Content sits in the same
+     16px-padded `.view` column (`:82`), so nothing renders in side gutters.
+  5. **Sticky WILL work — ancestor chain is clean (the real failure mode, checked).** Chain:
+     `.workout-timer` (direct child of `#activeWorkout`, confirmed in `renderActive` markup
+     `:783`) → `#activeWorkout` → `#log.view` → `body`. There is NO CSS rule for `#activeWorkout`
+     or `#log` at all; `.view` (`:82`) is only `display:none;padding:16px` / `.view.active{display:block}`;
+     `body` (`:43`) is only `min-height:100dvh; padding-bottom`. None set `overflow`, `height`,
+     `transform`, or `contain`. The scroll happens on body/viewport, so sticky catches relative to
+     the viewport scroll. **Sticky is not silently broken.**
+  6. **Gym mode untouched.** Gym CSS block (`:184-360`) and gym JS are NOT in the diff
+     (`git diff b47a75d..f9bb199` touches only the `.workout-timer` rule + comment + sw.js cache).
+     `.gym-header` (flex-shrink:0) above `.gym-main` (`flex:1;overflow-y:auto`, `:218`) is intact →
+     gym timer stays pinned in its own scroll context, unchanged. `.workout-timer` does not exist
+     in the gym overlay (gym renders its own markup). Gym-open and gym-closed both unaffected.
+  7. **Regression scope — surgical.** Diff = 4 ins / 2 del in index.html (one CSS rule + comment)
+     + sw.js +1/-1. Nothing touches Step 1 (settings/theme), Step 2 (home plans), paste, history,
+     stats, export, the `startTimer()` interval, or the FAB. No JS change; `#workoutTimer` markup
+     and its interval update untouched.
+  8. **Small screen (≤380px) — fine.** `@media(max-width:380px)` (`:347-353`) overrides only
+     `.workout-timer{padding:10px 12px}` (`:351`); it does NOT touch position/top/z-index, so
+     sticky still applies. Reduced padding shrinks the CARD, not the header (the header offset is
+     unchanged by this media query), so the 71px assumption still holds on Fold 5 cover.
+  Non-blocking robustness note (71px fragility — judged NON-BLOCKING):
+  - The offset is a hardcoded px derived from the header. It is correct now and far less brittle
+    than it looks, because every dominant header dimension (gear 38px, 16px paddings, 1px border,
+    Export 36px) is fixed px and does NOT scale with rem. Only the h1 (1.3rem) scales, and it
+    overtakes the 38px gear only above root ≈ 24.4px (≈152% font zoom) — node-modelled root ∈
+    {16,18,20,22,24} all stay 71px flush. Above ~150% zoom the timer would tuck a few px UNDER
+    the header (partially hidden) — but z-index:5<10 means the safe direction (under, not over),
+    and content stays readable. A long title doesn't wrap (single flex child, no width cap); it
+    would overflow horizontally, a pre-existing header concern, not introduced here.
+  - Recommendation to orchestrator: ACCEPT as-is for merge. A more robust offset (e.g. JS that
+    measures `header.offsetHeight` into a CSS var, or making the header a known fixed height) is a
+    nice-to-have, not required — the current value is correct across all realistic device/font
+    settings. Optionally request the hardening as a follow-up, not a blocker.
+  Unverifiable without a live browser (no headless Chrome in env):
+  - The actual sticky CATCH behavior on real scroll and the exact flush pixel alignment across
+    real devices/insets (math says flush; not observed live).
+  - Real rendering of the pinned bar over scrolling content (opacity is provably solid; live
+    paint not seen).
+  - These are live-only confirmations, not logic defects → PASS-with-notes. Preview on :4000
+    serves HTTP 200, the sticky rule, and `gymlog-v8`.
+
+### Step 4 — Set completion check-off (F4)
+- Status: ✅ VERIFIED by orchestrator (gate passed). Non-blocking note: condensed 3-col done row
+  doesn't column-align under the 5-col `.set-header` (independent grids, cosmetic only). Live tap +
+  rendered condensed height + 373px grid render deferred to final preview pass.
+- Commits:
+  - `86469cb` [step 4] add set check-off control writing `_done` with condensed strikethrough done styling
+  - `4cb3f12` [step 4] bump sw cache to v9
+- Diff summary (index.html: +24 / -8 net new in the set-row loop + new fn + CSS; sw.js +1/-1):
+  - **New JS `toggleSetDone(section, ei, si)`** (right after `updateSet`, `index.html`):
+    flips `current[warmups|exercises][ei].sets[si]._done`, calls `renderActive()`, and
+    if `#gymOverlay` has class `open` also calls `gymRenderContent()` so pips/counter/
+    first-incomplete stay in sync across modes. Guards on missing set. No new persistence
+    (matches gym-mode behavior — `current` is in-memory until `finishWorkout`).
+  - **`renderExerciseBlock()` set-row loop rewritten** (replaced the single
+    `opacity:.5` row): each row now leads with a `.set-check` button (the check control)
+    in the repurposed 28px cell. When NOT done → number, editable 3-input row (weight/
+    reps/rpe) + remove. When `_done` → check button shows `✓`, row becomes
+    `.set-row.done` (condensed grid `28px 1fr 32px`) holding a struck-through summary
+    span (`135 × 8 @8`, RPE omitted when blank) + the same remove-set button. Remove
+    (`removeSet`), add (`addSet`), update (`updateSet`) all unchanged and still wired.
+  - **New CSS**: `.set-check` (bordered tappable cell, `min-height:40px`, themed
+    `var(--border)`/`var(--muted)`); `.set-check.done` (green via `var(--success)` +
+    new `var(--success-bg)` tint); `.set-row.done` (3-col grid, `margin-bottom:4px`);
+    `.set-row.done .set-summary` (line-through, `var(--muted)`, single-line ellipsis);
+    `.set-row.done .set-check`/`.remove-set` shrink to `min-height:30px`. New
+    `--success-bg` var added to BOTH `:root` (dark `rgba(34,197,94,.14)`) and
+    `:root[data-theme="light"]` (`rgba(22,163,74,.12)`) → theme-correct light & dark.
+    `@media(max-width:380px)` adds `.set-check{font-size:.72rem}` +
+    `.set-row.done .set-summary{font-size:.72rem}` so it stays usable on Fold cover.
+  - `sw.js`: `CACHE_NAME` `gymlog-v8` → `gymlog-v9`.
+- GRID / CONDENSE APPROACH (stated):
+  - **Grid:** repurposed the leading **28px "#" cell into the check toggle** — NO new
+    column, so the editable grid stays `28px 1fr 1fr 1fr 32px` exactly (no Fold-cover
+    breakage; the number 1..n moves into the check button face when not done, becomes
+    `✓` when done). Check button fills the cell, `min-height:40px` (≥32px tap target).
+  - **Condense:** a done row drops the three full-height (`min-height:40px`) inputs and
+    collapses to a single struck-through summary line. Measured height delta: editable
+    row ≈ input 40px + `margin-bottom:8px` = **~48px**; done row ≈ tallest cell 30px +
+    `margin-bottom:4px` = **~34px** → ~14px (~30%) shorter per done set. The grid also
+    narrows from 5 cols to 3 (28px + summary + 32px), removing the reps/rpe input boxes.
+  - **Un-check:** the check button is present in BOTH states; tapping a done row's `✓`
+    calls `toggleSetDone` → `_done=false` → re-render restores the full editable row.
+- CROSS-MODE VERIFICATION (no headless browser — code trace + node simulation; live
+  click/visual = real-browser confirm at preview on :4000, which serves the new code
+  + `gymlog-v9`):
+  - **GYM CLOSED (normal mode):** Tap check → `toggleSetDone` flips `_done=true`,
+    `renderActive()` re-emits the row as `.set-row.done` (struck/gray/condensed summary);
+    gym overlay not open so the `gymRenderContent()` branch is skipped. Tap again →
+    `_done=false` → editable row restored. Node-simulated: undefined→true→false toggling
+    correct; summary `135 × 8 @8` and `135 × 6` (no `@` when rpe blank) correct. Add Set
+    around a done row: `addSet` pushes a new set (no `_done`) → renders as a normal
+    editable row below the condensed one. Remove Set on a done row: `removeSet` splices
+    it; if last set removed, exercise drops (unchanged behavior). PASS.
+  - **GYM OPEN (cross-consistency):**
+    (a) Mark done in NORMAL then open gym → `openGymMode` first-incomplete scan reads the
+        same `_done`; node-sim: marking set0 done → scan returns set1 (or -1 if all done),
+        so gym jumps past the normal-mode-checked set; pips show it green (pip reads
+        `s._done`), counter/`allDone` respect it. (Gym already reads `_done`; this change
+        doesn't alter gym read paths.) PASS.
+    (b) Mark done in GYM (`gymMarkSetDone` sets `_done=true`) then close → `closeGymMode`
+        calls `renderActive()` → the normal block now shows the new condensed/struck row
+        automatically. PASS.
+    (c) Toggle in normal WHILE gym open → `toggleSetDone` also calls `gymRenderContent()`
+        (guarded by `#gymOverlay.classList.contains('open')`) so pips/counter refresh live
+        without leaving the overlay. PASS.
+  - LOCKED (gym always-dark) upheld: gym pip styling untouched (still `#22c55e`); new
+    normal-mode check styling uses themed vars only (`--success`/`--success-bg`/`--muted`/
+    `--border`). No gym CSS in the diff.
+- HISTORY render check: `renderHistory` (`index.html` ~`:1052`) maps each set to
+  `(s.weight||'—')+'×'+(s.reps||'—')` and IGNORES `_done` entirely → a `_done` set still
+  renders identically in history. `finishWorkout` persists `current` (incl. `_done` flags)
+  into `gymlog_workouts`; history unaffected. No regression.
+- Persistence: `toggleSetDone` does NOT add new persistence — `_done` lives in in-memory
+  `current` and lands in history on finish, consistent with existing gym-mode behavior.
+- Regression scope: only the set-row loop, one new function, and additive CSS/var changed.
+  Settings/theme (1), home plans (2), pinned timer (3), paste, gym auto-advance/rest,
+  stats, export, FAB, add/remove set, history all untouched. Both inline `<script>` blocks
+  parse via `new Function()`. Preview on :4000 serves the new code + `gymlog-v9`.
+- Worker verification (gym open / gym closed): PASS both (detailed above).
+- Auditor findings: PASS — Check-off control is correct and additive; done-row grid columns match
+  children (3=3); cross-mode `_done` is consistent because both writers mutate the same in-memory
+  `current` field and all gym read-paths are unchanged; `--success-bg` present in BOTH themes;
+  un-check fully restores editable inputs from `current`. Diff is tightly scoped (index.html
+  +42/-8 region: set-row loop + new fn + CSS/var; sw.js +1/-1). No blocking issues.
+  Confirmed:
+  1. **`toggleSetDone` correctness** (`index.html:768-776`). Resolves `arr` by section
+     (`warmup`→`current.warmups` else `current.exercises`), guards `arr[ei] && arr[ei].sets[si]`
+     → no throw on a bad index; returns early. Flips `set._done = !set._done` (undefined→true→false
+     node-simulated correct), calls `renderActive()`, and guards the gym refresh with
+     `document.getElementById('gymOverlay').classList.contains('open')` before `gymRenderContent()`.
+     `current` can only be null if no active workout, in which case no `.set-check` is rendered and
+     the handler is unreachable (and a null deref would throw on `arr` — but it's not callable). Inputs
+     live in `current` (not the DOM); un-check re-renders the editable row rebuilt from `current`, so
+     weight/reps/rpe are intact (node-sim: values preserved across true→false). PASS.
+  2. **Grid integrity — done-row columns MATCH children (the headline check).**
+     Editable `.set-row` grid stays `28px 1fr 1fr 1fr 32px` (`:101`); the 28px cell is *repurposed*
+     into the `.set-check` button (no new column). Editable markup emits 5 children (check, weight,
+     reps, rpe, remove) = 5 cols → MATCH. DONE row grid `.set-row.done` = `28px 1fr 32px` (`:110`,
+     3 cols); done markup (`:843-847`) emits exactly 3 children (check, `.set-summary` span, remove)
+     = 3 cols → MATCH. No 5-in-3 mismatch; layout does not break. `.set-check` `min-height:40px`
+     (`:107`) ≥ tap target; `@media(max-width:380px)` (`:360-361`) only shrinks `.set-check` /
+     `.set-summary` font to `.72rem` (does not touch grid/position) so both row states stay usable at
+     373px (Fold cover). `.set-header` (`:118`) stays 5-col `# Weight Reps RPE`; an editable row aligns
+     under it; a done row is its OWN independent grid so it renders fine, just doesn't column-align
+     with the header (cosmetic — see note 1). PASS.
+  3. **Cross-mode `_done` consistency (LOCKED identical both modes) — PASS, the key result.**
+     Both writers mutate the SAME field on the SAME in-memory `current` object; the gym read-paths
+     are byte-for-byte unchanged by this diff (grep-confirmed only the `gymRenderContent()` call was
+     added). (a) Normal-check → `openGymMode` first-incomplete `sets.findIndex(s=>!s._done)` (`:882`),
+     pips `s._done?' done'` (`:954`), counter (`:929`), `allDone sets.every(s=>s._done)` (`:913`) all
+     honor it. (b) Gym-mark → `closeGymMode()` (`:892`) calls `renderActive()` → normal block shows
+     the condensed/struck row. (c) Toggle-in-normal-while-gym-open → `gymRenderContent()` fires
+     (guarded), which re-reads `current` via `gymGetExercises()` (`:866`) → pips/counter refresh live.
+     `gymMarkSetDone` only ever sets `_done=true` (`:966`); the new toggle owns un-check in normal
+     mode → no writer conflict. NOTE: `gymMarkSetDone` calls `save()` (`:967`) but `toggleSetDone`
+     does not — this is NOT a desync: `save()` (`:573-577`) persists only `workouts`/`exercises`/`plans`,
+     and the in-progress `current` is NOT in `workouts` until `finishWorkout` does `workouts.unshift`
+     (`:714`). So neither writer durably persists `_done` on the active workout; both rely on finish.
+     Behavior is consistent. PASS.
+  4. **Visual "done" requirements met.** Done row is genuinely shorter: editable ≈ input 40px +
+     `margin-bottom:8px` ≈ 48px; done ≈ tallest cell 30px (`:112-113`) + `margin-bottom:4px` (`:110`)
+     ≈ 34px → ~14px / ~29% shorter (matches worker claim). Strikethrough `text-decoration:line-through`
+     + gray `color:var(--muted)` on `.set-summary` (`:111`). Check is green `var(--success)` ✓
+     (`&#10003;`, `:108`,`:838`) vs remove red `var(--danger)` ✕ (`&#10005;`, `:105`,`:846`/`:855`) —
+     distinct color AND glyph; remove still wired to `removeSet`. PASS (live tap/exact height = live-only).
+  5. **Theme correctness — PASS.** `--success-bg` present in BOTH `:root` dark `rgba(34,197,94,.14)`
+     (`:29`) and `:root[data-theme="light"]` `rgba(22,163,74,.12)` (`:41`). Check/summary use only
+     themed vars (`var(--success)`/`var(--success-bg)`/`var(--muted)`/`var(--border)`) — no hardcoded
+     color. Gym pip stays hardcoded `#22c55e` (`:319`, untouched) — correct, gym is always-dark. No
+     gym CSS in the diff.
+  6. **History + persistence — no regression.** `renderHistory` (`:1085`) maps each set to
+     `(s.weight||'—')+'×'+(s.reps||'—')` and ignores `_done` → done sets render identically; totals/
+     volume unaffected. `finishWorkout` (`:714`) `workouts.unshift(current)` persists `_done` flags
+     into `gymlog_workouts`. PASS.
+  7. **Regression scope — surgical.** `git diff b18d19b..HEAD` touches only index.html, sw.js,
+     PLAN_STATE.md. index.html changes are confined to the set-row loop + new `toggleSetDone` + the
+     `.set-check`/`.set-row.done` CSS + `--success-bg` var + the `@media(max-width:380px)` font lines.
+     No change to Steps 1-3 (settings/theme, home plans, pinned timer), paste, gym auto-advance/rest,
+     stats, export, FAB, add/remove/update set. No function signature changed (`toggleSetDone` is new;
+     callers are only the rendered buttons). Both inline `<script>` blocks parse via `new Function()`.
+  8. **Cache bump.** `sw.js` `gymlog-v8`→`gymlog-v9` (`4cb3f12`), +1/-1, nothing else in sw.js.
+  9. **Verification quality.** Worker used node sim + code trace (no headless browser), which is
+     appropriate. I re-ran an independent node parse of both script blocks (OK) + summary/toggle
+     simulation + grid-vs-children count, and confirmed the preview on :4000 serves HTTP 200, the
+     `toggleSetDone` code, and `gymlog-v9`.
+  Non-blocking notes / unverifiable without a live browser (no headless Chrome in env):
+  - (Minor cosmetic) The 5-col `.set-header` (`# Weight Reps RPE`) does NOT column-align over a
+    condensed 3-col done row. This does not break layout (independent grids); it just means the
+    struck summary sits left under the "Weight" label area. Acceptable; flag only if the user dislikes
+    it visually at preview.
+  - Real tap on `.set-check`, the actual rendered condensed height, and the real grid render at 373px
+    (Fold cover) are live-only — math/markup are correct, paint not observed.
+- Auditor STOP report: verdict PASS. Done-row grid-vs-columns = 3 cols / 3 children = MATCH (editable
+  5/5 MATCH). Cross-mode `_done` = consistent (same in-memory field, gym read-paths unchanged, no
+  writer conflict; `save()` mismatch is benign since `current` isn't persisted until finish).
+  `--success-bg` = present in BOTH dark `:root` and light `:root[data-theme="light"]`. Unverifiable
+  live: actual tap, real condensed height, real 373px grid render, header-vs-done-row visual alignment.
+
+### Step 5 — Last-weight/sets memory (F5)
+- Status: ✅ verified
+- Commits:
+  - `7b5ab30` [step 5] add lastPerformance history lookup (incl. render wiring in both modes)
+  - `2886495` [step 5] bump sw cache to v10
+- Diff summary (index.html: +67 / -1 net; sw.js +1/-1):
+  - **New JS `lastPerformance(name)`** (right before `renderExerciseBlock`): scans
+    `workouts` newest-first; within each workout concatenates `(exercises||[]).concat(warmups||[])`
+    so WORKING sets win over a same-named warmup; matches by name; skips occurrences with
+    zero sets (keeps looking); returns `{sets, date, hasDone}` for the most-recent match or
+    `null`. `hasDone = sets.some(s => s && s._done)`. Defensive against missing
+    `warmups`/`exercises`, null entries, empty `workouts`, falsy/empty name.
+  - **New JS `lastPerfSetsHtml(lp, struckStyle)`**: maps each set to `weight×reps`
+    (`—` when missing; `0` preserved). Wraps each in `<span>`. Applies the passed
+    `struckStyle` ONLY to sets where `lp.hasDone && !s._done` (completed-vs-attempted
+    distinction). When `hasDone` is false (legacy/no `_done` anywhere) ALL sets render
+    neutral — no strike, no stigma. Joined with ` · `.
+  - **`renderExerciseBlock()`**: after the name/notes header row, if `lastPerformance(ex.name)`
+    is non-null, emits `<div class="last-perf">Last: …</div>` (struck style
+    `text-decoration:line-through;opacity:.55`) ABOVE the `.set-header`. New exercise with
+    no history emits nothing (no empty "Last:" clutter).
+  - **`gymRenderContent()`**: just after the `.gym-target` (weight×reps) line, if a prior
+    performance exists, emits `<div class="gym-last-perf">Last: …</div>` (struck style
+    `text-decoration:line-through;color:#444`).
+  - **New CSS**:
+    - `.last-perf` (NORMAL mode, themed): `color:var(--muted)`, `.72rem`, tabular-nums →
+      correct in BOTH light & dark.
+    - `.gym-last-perf` + `.gym-last-perf span` (GYM mode, HARDCODED `#888`, struck spans
+      inline `#444`): no themed vars — upholds locked "gym always-dark" decision. Sits
+      below `.gym-target` (which keeps its `margin-bottom:28px`); `margin:-16px 0 26px`
+      keeps it glanceable & tight under the target without crowding the big set counter.
+  - `sw.js`: `CACHE_NAME` `gymlog-v9` → `gymlog-v10`.
+- MATCH RULE: **case-insensitive, trimmed** exact-name match
+  (`String(name).trim().toLowerCase()` on both sides). Chosen over strict exact so
+  "Bench Press" / "bench press" / " Bench Press " resolve to the same lift. `esc()` is
+  used when PRINTING names/numbers; matching uses the raw trimmed/lowered string.
+- WORKING-OVER-WARMUP RULE: within a single historical workout, `exercises` are searched
+  before `warmups`, so if a user named a warmup identically to a working lift, the working
+  sets are surfaced (more meaningful as "last performance"). A warmup-only history still
+  matches (e.g. a lift only ever done as warm-up).
+- COMPLETED-vs-ATTEMPTED RENDERING RULE (incl. legacy):
+  - If the matched historical exercise has AT LEAST ONE set with `_done` truthy
+    (`hasDone===true`): completed sets render normally; sets NOT `_done` are de-emphasized
+    (strikethrough + dimmed — normal mode `opacity:.55`, gym `color:#444`).
+  - If the matched historical exercise has NO `_done` on ANY set (`hasDone===false`, e.g.
+    legacy data predating completion tracking): render EVERY set neutral — no strike, no
+    "not completed" stigma. Just `Last: 135×8 · 135×8`.
+- DEFENSIVE: missing weight/reps → `—`; `0` is preserved (not coerced to `—`); an
+  occurrence with empty `sets` is skipped (search continues to older workouts); never
+  throws on empty `workouts` or entries lacking `warmups`/`exercises`/`name`.
+- PERF: a single O(history) loop with early-return on first match; called per render in
+  both `renderExerciseBlock` (per exercise) and `gymRenderContent` (current exercise only).
+  No structures built/cached; simple and cheap. Not memoized (not needed at typical
+  history/exercise counts).
+- Worker verification (no headless browser — node simulation of the lookup/render helpers
+  + rigorous code trace; both inline `<script>` blocks re-parsed via `new Function()` = OK;
+  preview on :4000 serves the new code + `gymlog-v10`):
+  - **NORMAL mode (GYM CLOSED):** Exercise with prior history shows `Last: …` under the
+    name, above the sets, themed `var(--muted)`. Node-sim of a Bench Press fixture
+    (warmup 45×10 + working 135×8/135×8/140×6 with the 140×6 NOT done, `hasDone:true`) →
+    surfaces the WORKING sets `135×8 · 135×8 · 140×6` with `140×6` struck/dimmed. A legacy
+    fixture (no `_done`) → `Last: 225×5 · —×—` all neutral (no strike). New exercise with
+    no history → `lastPerformance` returns null → NOTHING rendered (no empty "Last:"). Light
+    & dark both use `var(--muted)` → correct (live paint = preview confirm). PASS.
+  - **GYM mode (GYM OPEN):** Same reference appears just under the target weight×reps line
+    via `.gym-last-perf`, hardcoded `#888` (struck `#444`) — gym dark palette, no themed
+    vars. `gymRenderContent` calls the SAME `lastPerformance` for the current exercise only;
+    null → nothing rendered; small/glanceable so it doesn't crowd the big set counter. PASS.
+  - **GYM CLOSED result:** PASS. **GYM OPEN result:** PASS.
+  - LOCKED (gym always-dark) upheld: grep confirms `.gym-last-perf` uses ZERO `var(--…)`;
+    only the NORMAL `.last-perf` uses `var(--muted)`.
+  - Live visual (real-browser paint of both lines in light/dark + the gym overlay) is a
+    real-browser confirm at the preview — logic/markup/parse verified here, paint not observed.
+### Auditor Findings
+
+1. **lastPerformance function logic** — PASS.
+   - Scans `workouts` newest-first: `workouts` is always newest-first by construction
+     (`workouts.unshift(current)` in `finishWorkout`, line 719); no sort needed, loop
+     runs `wi = 0, 1, 2, …` which IS newest-to-oldest. PASS.
+   - Case-insensitive + trimmed name matching: `String(name).trim().toLowerCase()` applied
+     to both the query and each `e.name` before strict equality (`!==`). PASS.
+   - Early-return on first match: `return { sets, date, hasDone }` fires the moment a
+     non-empty matching set is found; inner loop does NOT continue. PASS.
+   - Returns `{sets, date, hasDone}` or `null`: shape confirmed in code. `null` returned
+     when no match or on empty/falsy name. PASS.
+   - Concatenation order (`exercises` before `warmups`): ensures same-named working sets
+     are surfaced over warmups within one workout. PASS.
+
+2. **hasDone computation** — PASS.
+   - `hasDone = sets.some(function(s) { return s && s._done; })` — exactly as required.
+     `s && s._done` safely handles null entries; `s._done` undefined (falsy) → false.
+     Legacy data with no `_done` field → `some()` returns false → `hasDone = false`. PASS.
+   - Legacy render: when `hasDone===false`, `lastPerfSetsHtml` condition
+     `if (lp.hasDone && !s._done)` is always false → every set takes the plain `<span>`
+     branch → fully neutral render, no strike or de-emphasis. Node-verified with fixture.
+     PASS.
+
+3. **Normal-mode render (`.last-perf` in `renderExerciseBlock`)** — PASS.
+   - `.last-perf` CSS (line 120): `color:var(--muted)` — uses a themed CSS var, correct
+     for normal mode (light/dark). No hardcoded color in the class rule. PASS.
+   - Div is only emitted when `lastPerformance(ex.name)` is non-null (guarded by `if (lp)`).
+     When history returns null (new exercise or no match), nothing is rendered. PASS.
+
+4. **Gym-mode render (`.gym-last-perf` in `gymRenderContent`)** — PASS.
+   - `.gym-last-perf` CSS (line 272): `color:#888` — hardcoded hex only.
+   - `.gym-last-perf span` CSS (line 273): `color:#888` — hardcoded hex only.
+   - Struck-style passed to `lastPerfSetsHtml` for gym: `'text-decoration:line-through;color:#444'`
+     — hardcoded hex only.
+   - ZERO `var(--)` references in `.gym-last-perf` CSS or in the gym render branch.
+     Grep confirmed no matches for `gym-last-perf.*var\(`. PASS.
+
+5. **Independent logic test (fixture trace)** — PASS.
+   - Node-executed the exact fixture from the checklist. Result:
+     `{ sets: [{weight:"135",reps:"8",_done:true},{weight:"135",reps:"8",_done:false}], date:"2026-06-19", hasDone:true }`.
+   - Matches expected output exactly: correct workout selected (2026-06-19, not the Squat
+     workout at 2026-06-20), correct sets, `hasDone:true` (first set has `_done:true`). PASS.
+
+6. **sw.js cache bump** — PASS.
+   - `sw.js` line 1: `const CACHE_NAME = 'gymlog-v10';` — confirmed by direct read. PASS.
+
+7. **PLAN_STATE.md consistency** — PASS (at time of auditor reading).
+   - Plan table showed Step 5 as `auditing`. Step 5 section showed `Status: auditing`. Both
+     are now updated to `verified` by this auditor run.
+
+**Overall verdict: PASS** — All 7 checklist items pass. The `lastPerformance` function is
+logically correct (newest-first scan, case-insensitive+trimmed match, early-return, correct
+return shape). `hasDone` computation is idiomatic and handles legacy data cleanly. Normal mode
+correctly uses themed CSS vars; gym mode uses ZERO themed vars (hardcoded `#888`/`#444` only,
+gym-always-dark contract upheld). Fixture trace produces the exact expected output. Cache
+bumped to `gymlog-v10`. No blocking issues. No production code changes required.
+
+---
+
+## Open decisions needing user input (surfaced in Phase 1, not silently chosen)
+1. **Gym mode under light theme:** recommend gym mode stays always-dark (high-contrast,
+   glanceable, OLED-friendly in a gym). Theme toggle would affect the normal app only.
+2. **Saved plans visibility on home:** recommend showing them in the idle/no-workout state
+   (so you tap a plan to start), hidden while a workout is active. Alternative: always pinned
+   at the very top of `#log`.
+3. **Theme scope at launch:** light + dark only (per prompt). System/auto-follow can be a
+   later addition.
+
+## Deviations from prompt
+- Prompt proposed "3–4 steps"; chose **4** with the grouping above. F2+F3 merged into one step
+  because both reshape the `#log` view's layout/scroll behavior in complementary states.
+
+## Blockers
+- None. Awaiting user approval of this plan before dispatching any worker (Phase 1 STOP).
