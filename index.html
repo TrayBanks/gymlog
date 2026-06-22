@@ -617,7 +617,44 @@ var currentPlanId = null;   /* id of the plan that loaded the current workout */
 var currentPlanDayIdx = null; /* day index within that plan (null for single-day) */
 var knownExercises = JSON.parse(localStorage.getItem(EXERCISES_KEY) ||
   '["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row","Pull Up","Lat Pulldown","Bicep Curl","Tricep Pushdown","Leg Press","Romanian Deadlift","Lateral Raise"]');
-var plans = JSON.parse(localStorage.getItem(PLANS_KEY) || '[]');
+var _rawPlans = localStorage.getItem(PLANS_KEY);
+var plans = _rawPlans ? (JSON.parse(_rawPlans) || []) : null;
+if (!plans) {
+  plans = [{
+    id: 1000000000001,
+    name: 'Push / Pull / Legs',
+    data: [
+      { name: 'Push Day', exercises: [
+        { name: 'Band Pull-Apart',        sets: 2, reps: '15', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Arm Circles',            sets: 2, reps: '10', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Bench Press',            sets: 4, reps: '8',  rest: 90  },
+        { name: 'Overhead Press',         sets: 3, reps: '8',  rest: 90  },
+        { name: 'Incline Dumbbell Press', sets: 3, reps: '10', rest: 90  },
+        { name: 'Lateral Raise',          sets: 3, reps: '15', rest: 60  },
+        { name: 'Tricep Pushdown',        sets: 3, reps: '12', rest: 60  }
+      ]},
+      { name: 'Pull Day', exercises: [
+        { name: 'Dead Hang',    sets: 2, reps: '20s', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Band Face Pull', sets: 2, reps: '15', rest: 0,  notes: 'WARM-UP' },
+        { name: 'Deadlift',     sets: 4, reps: '5',  rest: 120  },
+        { name: 'Pull Up',      sets: 3, reps: '6',  rest: 90   },
+        { name: 'Barbell Row',  sets: 3, reps: '8',  rest: 90   },
+        { name: 'Lat Pulldown', sets: 3, reps: '12', rest: 60   },
+        { name: 'Bicep Curl',   sets: 3, reps: '12', rest: 60   }
+      ]},
+      { name: 'Leg Day', exercises: [
+        { name: 'Leg Swing',        sets: 2, reps: '10', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Bodyweight Squat', sets: 2, reps: '15', rest: 0,   notes: 'WARM-UP' },
+        { name: 'Squat',            sets: 4, reps: '8',  rest: 120  },
+        { name: 'Romanian Deadlift', sets: 3, reps: '10', rest: 90  },
+        { name: 'Leg Press',        sets: 3, reps: '12', rest: 90   },
+        { name: 'Leg Curl',         sets: 3, reps: '12', rest: 60   },
+        { name: 'Calf Raise',       sets: 4, reps: '15', rest: 60   }
+      ]}
+    ]
+  }];
+  localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+}
 var current = null;
 
 /* Settings (new gymlog_settings key; independent of save()) */
