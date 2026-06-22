@@ -238,6 +238,11 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .gym-weight-adj{display:flex;gap:10px;justify-content:center;margin:-8px 0 22px;flex-wrap:wrap}
 .gym-weight-adj button{background:rgba(108,99,255,.12);color:#8B85FF;border:1px solid rgba(108,99,255,.3);border-radius:10px;font-size:.85rem;font-weight:700;padding:9px 16px;cursor:pointer;min-height:42px;min-width:52px}
 .gym-weight-adj button:active{background:rgba(108,99,255,.3)}
+/* Warmup exercise demo image (gym mode) */
+.gym-warmup-img-wrap{width:100%;max-width:320px;margin:4px auto 20px;border-radius:12px;overflow:hidden;background:#0a1628;min-height:140px;display:flex;align-items:center;justify-content:center;position:relative}
+.gym-warmup-img{width:100%;height:auto;max-height:220px;object-fit:cover;display:block;opacity:0;transition:opacity .4s}
+.gym-warmup-img.loaded{opacity:1}
+.gym-warmup-img-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.2rem;opacity:.18}
 
 /* Main scrollable content */
 .gym-main{
@@ -920,6 +925,40 @@ function renderActive() {
   cont.innerHTML = html;
 }
 
+/* ── Exercise image cache (warmup demos via wger.de public API) ─── */
+var _exImgCache = {};
+function loadExerciseImage(name, imgId) {
+  var key = name.toLowerCase().trim();
+  var applyImg = function(url) {
+    var el = document.getElementById(imgId);
+    if (!el) return;
+    el.onload = function() { el.classList.add('loaded'); };
+    el.src = url;
+  };
+  if (_exImgCache[key] !== undefined) {
+    if (_exImgCache[key]) applyImg(_exImgCache[key]);
+    return;
+  }
+  _exImgCache[key] = null; /* mark as pending */
+  fetch('https://wger.de/api/v2/exercise/search/?term=' + encodeURIComponent(key) + '&language=english&format=json')
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      var s = data && data.suggestions && data.suggestions[0];
+      if (!s) return null;
+      var baseId = (s.data && (s.data.base_id || s.data.id)) || null;
+      if (!baseId) return null;
+      return fetch('https://wger.de/api/v2/exerciseimage/?exercise_base=' + baseId + '&format=json&is_main=1');
+    })
+    .then(function(r) { return r && r.ok ? r.json() : null; })
+    .then(function(data) {
+      var img = data && data.results && data.results[0] && data.results[0].image;
+      if (!img) return;
+      _exImgCache[key] = img;
+      applyImg(img);
+    })
+    .catch(function() {});
+}
+
 /* ── Weight quick-adjust helpers ────────────────────── */
 function adjustSetWeight(sec, ei, si, delta) {
   var arr = sec === 'warmup' ? current.warmups : current.exercises;
@@ -1008,7 +1047,7 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
     '<div class="' + blockClass + '">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:10px">' +
     '<h4 style="font-size:.92rem;flex:1;min-width:0">' + esc(ex.name) +
-    (ex._notes && !isWarmup ? '<span style="display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px">' + esc(ex._notes) + '</span>' : '') +
+    (ex._notes ? '<span style="display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px">' + esc(ex._notes) + '</span>' : '') +
     '</h4>' +
     vidBtn +
     '<button class="remove-set" onclick="removeExercise(\'' + sec + '\',' + ei + ')" title="Remove">&#10005;</button></div>';
@@ -1125,11 +1164,22 @@ function gymRenderContent() {
   var badgeClass = item.isWarmup ? 'warmup' : 'working';
   var badgeLabel = item.isWarmup ? 'Warm-Up' : 'Working Set';
 
+  var gymImgId = 'gym-wu-img-' + gymExIdx;
   var html =
     '<div class="gym-section-badge ' + badgeClass + '">' + badgeLabel + '</div>' +
     '<div class="gym-ex-name">' + esc(ex.name) +
-    (ex._notes && !item.isWarmup ? '<div class="gym-ex-notes">' + esc(ex._notes) + '</div>' : '') +
-    '</div>' +
+    (ex._notes ? '<div class="gym-ex-notes">' + esc(ex._notes) + '</div>' : '') +
+    '</div>';
+
+  if (item.isWarmup) {
+    html +=
+      '<div class="gym-warmup-img-wrap">' +
+      '<div class="gym-warmup-img-placeholder">&#127939;</div>' +
+      '<img id="' + gymImgId + '" class="gym-warmup-img" src="" alt="' + esc(ex.name) + '">' +
+      '</div>';
+  }
+
+  html +=
     '<div class="gym-set-counter">' + (gymSetIdx + 1) + '</div>' +
     '<div class="gym-set-of">of ' + sets.length + ' sets</div>';
 
@@ -1170,6 +1220,7 @@ function gymRenderContent() {
     '</div>';
 
   document.getElementById('gymContent').innerHTML = html;
+  if (item.isWarmup) loadExerciseImage(ex.name, gymImgId);
 
   /* Set pips */
   var pipsHtml = sets.map(function(s, si) {
