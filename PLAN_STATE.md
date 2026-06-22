@@ -46,7 +46,7 @@ required state channels. If they disagree, STOP and report.
 | 2 | F2 — Saved plans onto `#log` home (idle/no-workout state) | ✅ verified |
 | 3 | F3 — Persistent pinned workout timer (both modes) | ✅ verified |
 | 4 | F4 — Set completion check-off (new UI on existing `_done`, both modes) | ✅ verified |
-| 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | auditing |
+| 5 | F5 — Running last-weight/sets memory (completed vs attempted), both modes | ✅ verified |
 
 Order rationale:
 - **Step 1 first** because the theme system refactors global `:root` CSS vars; landing it first
@@ -592,7 +592,7 @@ Order rationale:
   live: actual tap, real condensed height, real 373px grid render, header-vs-done-row visual alignment.
 
 ### Step 5 — Last-weight/sets memory (F5)
-- Status: auditing (worker done; awaiting auditor)
+- Status: ✅ verified
 - Commits:
   - `7b5ab30` [step 5] add lastPerformance history lookup (incl. render wiring in both modes)
   - `2886495` [step 5] bump sw cache to v10
@@ -664,7 +664,63 @@ Order rationale:
     only the NORMAL `.last-perf` uses `var(--muted)`.
   - Live visual (real-browser paint of both lines in light/dark + the gym overlay) is a
     real-browser confirm at the preview — logic/markup/parse verified here, paint not observed.
-- Auditor findings: —
+### Auditor Findings
+
+1. **lastPerformance function logic** — PASS.
+   - Scans `workouts` newest-first: `workouts` is always newest-first by construction
+     (`workouts.unshift(current)` in `finishWorkout`, line 719); no sort needed, loop
+     runs `wi = 0, 1, 2, …` which IS newest-to-oldest. PASS.
+   - Case-insensitive + trimmed name matching: `String(name).trim().toLowerCase()` applied
+     to both the query and each `e.name` before strict equality (`!==`). PASS.
+   - Early-return on first match: `return { sets, date, hasDone }` fires the moment a
+     non-empty matching set is found; inner loop does NOT continue. PASS.
+   - Returns `{sets, date, hasDone}` or `null`: shape confirmed in code. `null` returned
+     when no match or on empty/falsy name. PASS.
+   - Concatenation order (`exercises` before `warmups`): ensures same-named working sets
+     are surfaced over warmups within one workout. PASS.
+
+2. **hasDone computation** — PASS.
+   - `hasDone = sets.some(function(s) { return s && s._done; })` — exactly as required.
+     `s && s._done` safely handles null entries; `s._done` undefined (falsy) → false.
+     Legacy data with no `_done` field → `some()` returns false → `hasDone = false`. PASS.
+   - Legacy render: when `hasDone===false`, `lastPerfSetsHtml` condition
+     `if (lp.hasDone && !s._done)` is always false → every set takes the plain `<span>`
+     branch → fully neutral render, no strike or de-emphasis. Node-verified with fixture.
+     PASS.
+
+3. **Normal-mode render (`.last-perf` in `renderExerciseBlock`)** — PASS.
+   - `.last-perf` CSS (line 120): `color:var(--muted)` — uses a themed CSS var, correct
+     for normal mode (light/dark). No hardcoded color in the class rule. PASS.
+   - Div is only emitted when `lastPerformance(ex.name)` is non-null (guarded by `if (lp)`).
+     When history returns null (new exercise or no match), nothing is rendered. PASS.
+
+4. **Gym-mode render (`.gym-last-perf` in `gymRenderContent`)** — PASS.
+   - `.gym-last-perf` CSS (line 272): `color:#888` — hardcoded hex only.
+   - `.gym-last-perf span` CSS (line 273): `color:#888` — hardcoded hex only.
+   - Struck-style passed to `lastPerfSetsHtml` for gym: `'text-decoration:line-through;color:#444'`
+     — hardcoded hex only.
+   - ZERO `var(--)` references in `.gym-last-perf` CSS or in the gym render branch.
+     Grep confirmed no matches for `gym-last-perf.*var\(`. PASS.
+
+5. **Independent logic test (fixture trace)** — PASS.
+   - Node-executed the exact fixture from the checklist. Result:
+     `{ sets: [{weight:"135",reps:"8",_done:true},{weight:"135",reps:"8",_done:false}], date:"2026-06-19", hasDone:true }`.
+   - Matches expected output exactly: correct workout selected (2026-06-19, not the Squat
+     workout at 2026-06-20), correct sets, `hasDone:true` (first set has `_done:true`). PASS.
+
+6. **sw.js cache bump** — PASS.
+   - `sw.js` line 1: `const CACHE_NAME = 'gymlog-v10';` — confirmed by direct read. PASS.
+
+7. **PLAN_STATE.md consistency** — PASS (at time of auditor reading).
+   - Plan table showed Step 5 as `auditing`. Step 5 section showed `Status: auditing`. Both
+     are now updated to `verified` by this auditor run.
+
+**Overall verdict: PASS** — All 7 checklist items pass. The `lastPerformance` function is
+logically correct (newest-first scan, case-insensitive+trimmed match, early-return, correct
+return shape). `hasDone` computation is idiomatic and handles legacy data cleanly. Normal mode
+correctly uses themed CSS vars; gym mode uses ZERO themed vars (hardcoded `#888`/`#444` only,
+gym-always-dark contract upheld). Fixture trace produces the exact expected output. Cache
+bumped to `gymlog-v10`. No blocking issues. No production code changes required.
 
 ---
 
