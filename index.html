@@ -118,6 +118,9 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .set-header{display:grid;grid-template-columns:28px 1fr 1fr 1fr 32px;gap:6px;margin-bottom:6px}
 .set-header span{font-size:.68rem;color:var(--muted);text-transform:uppercase;text-align:center;font-weight:600}
 .last-perf{font-size:.72rem;color:var(--muted);margin:0 0 8px;line-height:1.5;font-variant-numeric:tabular-nums}
+.weight-adj{display:flex;gap:4px;padding:1px 0 5px 28px}
+.weight-adj button{background:rgba(108,99,255,.08);color:var(--primary);border:1px solid rgba(108,99,255,.2);border-radius:6px;font-size:.68rem;font-weight:700;padding:2px 7px;cursor:pointer;min-height:26px}
+.weight-adj button:active{background:rgba(108,99,255,.2)}
 .exercise-actions{display:flex;gap:8px;margin-top:8px}
 
 /* Section labels */
@@ -217,12 +220,15 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
   cursor:pointer;white-space:nowrap;min-height:36px;min-width:60px;
 }
 .gym-exit-btn:active{color:#fff;border-color:#444}
-.gym-progress{font-size:.78rem;color:#555;font-weight:600;letter-spacing:.5px;text-align:center;flex:1}
+.gym-progress{font-size:.82rem;color:#555;font-weight:600;letter-spacing:.5px;text-align:right;white-space:nowrap}
 .gym-overall-timer{
-  font-size:clamp(1.2rem,5vw,1.6rem);font-weight:800;
+  font-size:clamp(1.5rem,6.5vw,2rem);font-weight:800;
   font-variant-numeric:tabular-nums;color:#6C63FF;
-  letter-spacing:2px;white-space:nowrap;
+  letter-spacing:2px;white-space:nowrap;flex:1;text-align:center;
 }
+.gym-weight-adj{display:flex;gap:10px;justify-content:center;margin:-8px 0 22px;flex-wrap:wrap}
+.gym-weight-adj button{background:rgba(108,99,255,.12);color:#8B85FF;border:1px solid rgba(108,99,255,.3);border-radius:10px;font-size:.85rem;font-weight:700;padding:9px 16px;cursor:pointer;min-height:42px;min-width:52px}
+.gym-weight-adj button:active{background:rgba(108,99,255,.3)}
 
 /* Main scrollable content */
 .gym-main{
@@ -524,8 +530,8 @@ Supports a single workout <em>or</em> an array of multiple days. Optional <code 
   <!-- Header -->
   <div class="gym-header">
     <button class="gym-exit-btn" onclick="closeGymMode()">✕ Exit</button>
-    <span class="gym-progress" id="gymProgress"></span>
     <span class="gym-overall-timer" id="gymOverallTimer">00:00</span>
+    <span class="gym-progress" id="gymProgress"></span>
   </div>
 
   <!-- Main content -->
@@ -747,7 +753,9 @@ function addExercise() {
   var name = document.getElementById('exerciseName').value.trim();
   if (!name || !current) return;
   if (!knownExercises.includes(name)) knownExercises.push(name);
-  current.exercises.push({ name: name, sets: [{ weight: '', reps: '', rpe: '' }] });
+  var lp = lastPerformance(name);
+  var initWeight = lp && lp.sets[0] ? lp.sets[0].weight || '' : '';
+  current.exercises.push({ name: name, sets: [{ weight: initWeight, reps: '', rpe: '' }] });
   save();
   closeModal();
   renderActive();
@@ -828,6 +836,36 @@ function renderActive() {
   cont.innerHTML = html;
 }
 
+/* ── Weight quick-adjust helpers ────────────────────── */
+function adjustSetWeight(sec, ei, si, delta) {
+  var arr = sec === 'warmup' ? current.warmups : current.exercises;
+  var s = arr[ei].sets[si];
+  var cur = parseFloat(s.weight) || 0;
+  s.weight = String(cur + delta);
+  save();
+  renderActive();
+}
+function promptCustomWeight(sec, ei, si) {
+  var val = prompt('Adjust by how many lbs?', '5');
+  var n = parseFloat(val);
+  if (!isNaN(n)) adjustSetWeight(sec, ei, si, n);
+}
+function gymAdjustWeight(delta) {
+  var exs = gymGetExercises();
+  if (gymExIdx >= exs.length) return;
+  var sets = exs[gymExIdx].ex.sets;
+  if (gymSetIdx >= sets.length) return;
+  var cur = parseFloat(sets[gymSetIdx].weight) || 0;
+  sets[gymSetIdx].weight = String(cur + delta);
+  save();
+  gymRenderContent();
+}
+function gymPromptCustomWeight() {
+  var val = prompt('Adjust by how many lbs?', '5');
+  var n = parseFloat(val);
+  if (!isNaN(n)) gymAdjustWeight(n);
+}
+
 /* ── Last-performance memory (F5) ─────────────────────
    Scan completed `workouts` (newest-first) for the most recent
    exercise whose name matches `name` (case-insensitive, trimmed)
@@ -905,13 +943,21 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
         '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
         '</div>';
     } else {
+      var lpWeight = lp && lp.sets[si] ? lp.sets[si].weight || '' : '';
+      var weightVal = (s.weight !== undefined && s.weight !== '') ? s.weight : lpWeight;
       html +=
         '<div class="set-row">' +
         checkBtn +
-        '<input type="number" inputmode="decimal" value="' + (s.weight || '') + '" placeholder="lbs" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'weight\',this.value)">' +
+        '<input type="number" inputmode="decimal" value="' + (weightVal || '') + '" placeholder="lbs" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'weight\',this.value)">' +
         '<input type="number" inputmode="numeric" value="' + (s.reps || '') + '" placeholder="reps" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'reps\',this.value)">' +
         '<input type="number" inputmode="decimal" value="' + (s.rpe || '') + '" placeholder="RPE" min="1" max="10" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'rpe\',this.value)">' +
         '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
+        '</div>' +
+        '<div class="weight-adj">' +
+        '<button onclick="adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',5)">+5</button>' +
+        '<button onclick="adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',10)">+10</button>' +
+        '<button onclick="adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',15)">+15</button>' +
+        '<button onclick="promptCustomWeight(\'' + sec + '\',' + ei + ',' + si + ')">+?</button>' +
         '</div>';
     }
   });
@@ -1005,6 +1051,13 @@ function gymRenderContent() {
       html += '<button class="gym-done-btn all-done" onclick="closeGymMode()">Workout Done &rarr;</button>';
     }
   } else {
+    html +=
+      '<div class="gym-weight-adj">' +
+      '<button onclick="gymAdjustWeight(5)">+5</button>' +
+      '<button onclick="gymAdjustWeight(10)">+10</button>' +
+      '<button onclick="gymAdjustWeight(15)">+15</button>' +
+      '<button onclick="gymPromptCustomWeight()">+?</button>' +
+      '</div>';
     html += '<button class="gym-done-btn" onclick="gymMarkSetDone()">&#10003; &nbsp; SET DONE</button>';
   }
 
@@ -1044,8 +1097,8 @@ function gymMarkSetDone() {
   if (next >= 0) {
     gymSetIdx = next;
     gymRenderContent();
-    var restSecs = exs[gymExIdx].ex._rest || 90;
-    gymStartRest(restSecs, exs, gymExIdx, next);
+    var restSecs = exs[gymExIdx].ex._rest != null ? exs[gymExIdx].ex._rest : 90;
+    if (restSecs > 0) gymStartRest(restSecs, exs, gymExIdx, next);
   } else {
     /* All sets in this exercise done */
     gymSetIdx = sets.length - 1;
@@ -1354,8 +1407,10 @@ function showDayPicker(days) {
   document.getElementById('dayPickerArea').style.display = '';
   var html = '';
   days.forEach(function(day, idx) {
-    var ec = day.exercises.length;
-    var wc = (day.warmups || []).length;
+    var allEx = day.exercises || [];
+    var detectedWarmups = allEx.filter(function(ex) { return /^\s*WARM[\s\-]*UP/i.test(ex.notes || ''); });
+    var wc = (day.warmups || []).length + detectedWarmups.length;
+    var ec = allEx.length - detectedWarmups.length;
     var meta = ec + ' exercise' + (ec !== 1 ? 's' : '') + (wc ? ' + ' + wc + ' warm-up' + (wc !== 1 ? 's' : '') : '');
     html += '<li class="day-picker-item" onclick="pickDay(' + idx + ')">' +
       '<span class="day-name">' + esc(day.name || 'Day ' + (idx + 1)) + '</span>' +
@@ -1375,22 +1430,35 @@ function loadWorkoutFromPaste(data) {
     if (!wu.name) return;
     var n = parseInt(wu.sets) || 2;
     var r = wu.reps ? String(wu.reps) : '';
+    var lp = lastPerformance(wu.name);
     var sets = [];
-    for (var j = 0; j < n; j++) sets.push({ weight: '', reps: r, rpe: '' });
+    for (var j = 0; j < n; j++) {
+      var lpW = lp && lp.sets[j] ? lp.sets[j].weight || '' : '';
+      sets.push({ weight: lpW, reps: r, rpe: '' });
+    }
     if (!knownExercises.includes(wu.name)) knownExercises.push(wu.name);
     warmups.push({ name: wu.name, sets: sets, _rest: wu.rest || null, _notes: wu.notes || '' });
   });
   (data.exercises || []).forEach(function(ex) {
     if (!ex.name) return;
-    var n = parseInt(ex.sets) || 3;
+    var isWarmup = /^\s*WARM[\s\-]*UP/i.test(ex.notes || '');
+    var n = parseInt(ex.sets) || (isWarmup ? 2 : 3);
     var r = ex.reps ? String(ex.reps) : '';
+    var lp = lastPerformance(ex.name);
     var sets = [];
-    for (var k = 0; k < n; k++) sets.push({ weight: '', reps: r, rpe: '' });
+    for (var k = 0; k < n; k++) {
+      var lpW = lp && lp.sets[k] ? lp.sets[k].weight || '' : '';
+      sets.push({ weight: lpW, reps: r, rpe: '' });
+    }
     if (!knownExercises.includes(ex.name)) knownExercises.push(ex.name);
-    exercises.push({ name: ex.name, sets: sets, _rest: ex.rest || null, _notes: ex.notes || '' });
+    if (isWarmup) {
+      warmups.push({ name: ex.name, sets: sets, _rest: 0, _notes: ex.notes || '' });
+    } else {
+      exercises.push({ name: ex.name, sets: sets, _rest: ex.rest || null, _notes: ex.notes || '' });
+    }
   });
 
-  if (exercises.length === 0) {
+  if (warmups.length === 0 && exercises.length === 0) {
     var errEl = document.getElementById('pasteError');
     errEl.textContent = 'No valid exercises found. Each exercise needs a "name" field.';
     errEl.className = 'paste-error show';
