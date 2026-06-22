@@ -195,6 +195,15 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .plan-item .plan-meta{font-size:.73rem;color:var(--muted);margin-top:2px}
 .plan-item .plan-actions{display:flex;gap:6px;flex-shrink:0}
 .modal-divider{border:none;border-top:1px solid var(--border);margin:14px 0}
+/* Warmup-only set row (done/not-done, no inputs) */
+.set-row.warmup-row{grid-template-columns:28px 1fr 32px}
+.warmup-set-label{font-size:.82rem;color:var(--muted);padding:0 4px;line-height:1}
+/* Video link button on warmup exercises */
+.warmup-vid-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;background:rgba(245,158,11,.1);color:#f59e0b;border:1px solid rgba(245,158,11,.3);border-radius:6px;font-size:.75rem;text-decoration:none;flex-shrink:0}
+.warmup-vid-btn:active{background:rgba(245,158,11,.2)}
+/* Last-done badge on plan day picker */
+.day-last-done{font-size:.7rem;white-space:nowrap;flex-shrink:0;color:var(--muted);text-align:right}
+.day-last-done.done{color:var(--primary);font-weight:600}
 
 /* ═══════════════════════════════════════════
    GYM MODE — full-screen focus overlay
@@ -522,6 +531,16 @@ Supports a single workout <em>or</em> an array of multiple days. Optional <code 
 </div>
 </div>
 
+<!-- PLAN DAY PICKER MODAL -->
+<div id="planDayModal" class="modal-overlay">
+<div class="modal">
+<h2 id="planDayModalTitle">Select Day</h2>
+<p style="font-size:.85rem;color:var(--muted);margin-bottom:4px">Days ordered by last done — pick what's next.</p>
+<ul class="day-picker-list" id="planDayList"></ul>
+<button class="btn btn-ghost" style="width:100%;margin-top:4px" onclick="closePlanDayModal()">Cancel</button>
+</div>
+</div>
+
 <!-- ══════════════════════════════════════
      GYM MODE OVERLAY
      ══════════════════════════════════════ -->
@@ -562,6 +581,8 @@ var PLANS_KEY = 'gymlog_plans';
 var SETTINGS_KEY = 'gymlog_settings';
 
 var workouts = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
+var currentPlanId = null;   /* id of the plan that loaded the current workout */
+var currentPlanDayIdx = null; /* day index within that plan (null for single-day) */
 var knownExercises = JSON.parse(localStorage.getItem(EXERCISES_KEY) ||
   '["Bench Press","Squat","Deadlift","Overhead Press","Barbell Row","Pull Up","Lat Pulldown","Bicep Curl","Tricep Pushdown","Leg Press","Romanian Deadlift","Lateral Raise"]');
 var plans = JSON.parse(localStorage.getItem(PLANS_KEY) || '[]');
@@ -709,12 +730,52 @@ function switchTab(id, btn) {
 }
 
 /* ── Workout lifecycle ──────────────────────────── */
+function getWeekStart(ts) {
+  var d = new Date(ts);
+  var day = d.getDay(); // 0=Sun
+  d.setDate(d.getDate() - (day === 0 ? 6 : day - 1));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 function startWorkout() {
   if (current) { openModal(); return; }
-  var now = Date.now();
-  current = { id: now, date: new Date(now).toISOString(), startTime: now, warmups: [], exercises: [] };
-  startTimer();
-  renderActive();
+  if (plans.length === 0) {
+    var now = Date.now();
+    current = { id: now, date: new Date(now).toISOString(), startTime: now, warmups: [], exercises: [] };
+    startTimer(); renderActive(); return;
+  }
+  /* Find last-used plan from workout history, fall back to most recently saved plan */
+  var lastPlan = null;
+  for (var wi = 0; wi < workouts.length; wi++) {
+    if (workouts[wi]._planId) {
+      lastPlan = plans.find(function(p) { return p.id === workouts[wi]._planId; });
+      if (lastPlan) break;
+    }
+  }
+  if (!lastPlan) lastPlan = plans[0];
+  var data = lastPlan.data;
+  var days = Array.isArray(data) ? data : [data];
+  currentPlanId = lastPlan.id;
+  if (days.length === 1) { currentPlanDayIdx = 0; loadWorkoutFromPaste(days[0]); return; }
+  /* Multi-day: figure out which day hasn't been done this week */
+  var weekStart = getWeekStart(Date.now());
+  var doneDayNames = {};
+  for (var wi2 = 0; wi2 < workouts.length; wi2++) {
+    var w = workouts[wi2];
+    if (w._planId === lastPlan.id && new Date(w.date) >= weekStart && w._planDayName) {
+      doneDayNames[w._planDayName] = true;
+    }
+  }
+  var undoneDays = days.filter(function(d) { return !doneDayNames[d.name]; });
+  if (undoneDays.length === 1) {
+    /* Exactly one day left this week — auto-load it */
+    currentPlanDayIdx = days.indexOf(undoneDays[0]);
+    loadWorkoutFromPaste(undoneDays[0]);
+  } else {
+    /* New week or multiple options — show ordered day picker */
+    showPlanDayModal(lastPlan, days);
+  }
 }
 
 function finishWorkout() {
@@ -749,6 +810,27 @@ function openModal() {
 }
 function closeModal() { document.getElementById('exerciseModal').classList.remove('open'); }
 
+function syncCurrentToPlan() {
+  if (!currentPlanId || currentPlanDayIdx === null || !current) return;
+  var plan = plans.find(function(p) { return p.id === currentPlanId; });
+  if (!plan) return;
+  var dayData = Array.isArray(plan.data) ? plan.data[currentPlanDayIdx] : plan.data;
+  if (!dayData) return;
+  var allExercises = [];
+  (current.warmups || []).forEach(function(ex) {
+    allExercises.push({ name: ex.name, sets: ex.sets.length,
+      reps: ex.sets[0] ? ex.sets[0].reps || '' : '',
+      rest: 0, notes: ex._notes || '' });
+  });
+  (current.exercises || []).forEach(function(ex) {
+    allExercises.push({ name: ex.name, sets: ex.sets.length,
+      reps: ex.sets[0] ? ex.sets[0].reps || '' : '',
+      rest: ex._rest != null ? ex._rest : null, notes: ex._notes || '' });
+  });
+  dayData.exercises = allExercises;
+  save();
+}
+
 function addExercise() {
   var name = document.getElementById('exerciseName').value.trim();
   if (!name || !current) return;
@@ -756,6 +838,7 @@ function addExercise() {
   var lp = lastPerformance(name);
   var initWeight = lp && lp.sets[0] ? lp.sets[0].weight || '' : '';
   current.exercises.push({ name: name, sets: [{ weight: initWeight, reps: '', rpe: '' }] });
+  syncCurrentToPlan();
   save();
   closeModal();
   renderActive();
@@ -790,6 +873,7 @@ function toggleSetDone(section, ei, si) {
 function removeExercise(section, ei) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   arr.splice(ei, 1);
+  syncCurrentToPlan();
   renderActive();
 }
 
@@ -917,29 +1001,44 @@ function lastPerfSetsHtml(lp, struckStyle) {
 function renderExerciseBlock(ex, ei, section, isWarmup) {
   var sec = isWarmup ? 'warmup' : 'exercise';
   var blockClass = 'exercise-block' + (isWarmup ? ' warmup-block' : '');
+  var vidBtn = isWarmup
+    ? '<a href="https://www.youtube.com/results?search_query=' + encodeURIComponent(ex.name + ' exercise how to') + '" target="_blank" rel="noopener" class="warmup-vid-btn" title="How-to video">&#9654;</a>'
+    : '';
   var html =
     '<div class="' + blockClass + '">' +
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">' +
-    '<h4 style="font-size:.92rem">' + esc(ex.name) +
-    (ex._notes ? '<span style="display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px">' + esc(ex._notes) + '</span>' : '') +
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:10px">' +
+    '<h4 style="font-size:.92rem;flex:1;min-width:0">' + esc(ex.name) +
+    (ex._notes && !isWarmup ? '<span style="display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px">' + esc(ex._notes) + '</span>' : '') +
     '</h4>' +
+    vidBtn +
     '<button class="remove-set" onclick="removeExercise(\'' + sec + '\',' + ei + ')" title="Remove">&#10005;</button></div>';
-  var lp = lastPerformance(ex.name);
+  /* Last-perf only for working sets — warmups don't log weight */
+  var lp = isWarmup ? null : lastPerformance(ex.name);
   if (lp) {
     html += '<div class="last-perf">Last: ' +
       lastPerfSetsHtml(lp, 'text-decoration:line-through;opacity:.55') +
       '</div>';
   }
-  html += '<div class="set-header"><span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span></span></div>';
+  if (isWarmup) {
+    html += '<div class="set-header" style="grid-template-columns:28px 1fr 32px"><span>#</span><span></span><span></span></div>';
+  } else {
+    html += '<div class="set-header"><span>#</span><span>Weight</span><span>Reps</span><span>RPE</span><span></span></div>';
+  }
   ex.sets.forEach(function(s, si) {
     var checkBtn = '<button class="set-check' + (s._done ? ' done' : '') + '" onclick="toggleSetDone(\'' + sec + '\',' + ei + ',' + si + ')" title="' + (s._done ? 'Mark not done' : 'Mark done') + '" aria-pressed="' + (s._done ? 'true' : 'false') + '">' + (s._done ? '&#10003;' : (si + 1)) + '</button>';
     if (s._done) {
-      /* Condensed, struck-through summary line (less vertical height than an editable row) */
-      var summary = (s.weight || '—') + ' × ' + (s.reps || '—') + (s.rpe ? ' @' + s.rpe : '');
+      var summary = isWarmup ? 'Done' : ((s.weight || '—') + ' × ' + (s.reps || '—') + (s.rpe ? ' @' + s.rpe : ''));
       html +=
-        '<div class="set-row done">' +
+        '<div class="set-row done' + (isWarmup ? ' warmup-row' : '') + '">' +
         checkBtn +
         '<span class="set-summary">' + esc(summary) + '</span>' +
+        '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
+        '</div>';
+    } else if (isWarmup) {
+      html +=
+        '<div class="set-row warmup-row">' +
+        checkBtn +
+        '<span class="warmup-set-label">Set ' + (si + 1) + '</span>' +
         '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
         '</div>';
     } else {
@@ -1029,18 +1128,19 @@ function gymRenderContent() {
   var html =
     '<div class="gym-section-badge ' + badgeClass + '">' + badgeLabel + '</div>' +
     '<div class="gym-ex-name">' + esc(ex.name) +
-    (ex._notes ? '<div class="gym-ex-notes">' + esc(ex._notes) + '</div>' : '') +
+    (ex._notes && !item.isWarmup ? '<div class="gym-ex-notes">' + esc(ex._notes) + '</div>' : '') +
     '</div>' +
     '<div class="gym-set-counter">' + (gymSetIdx + 1) + '</div>' +
-    '<div class="gym-set-of">of ' + sets.length + ' sets</div>' +
-    '<div class="gym-target"><strong>' + weightTxt + '</strong> &nbsp;&times;&nbsp; <strong>' + repsTxt + '</strong></div>';
+    '<div class="gym-set-of">of ' + sets.length + ' sets</div>';
 
-  /* Last-time reference (gym hardcoded palette — gym is always-dark) */
-  var gymLp = lastPerformance(ex.name);
-  if (gymLp) {
-    html += '<div class="gym-last-perf">Last: ' +
-      lastPerfSetsHtml(gymLp, 'text-decoration:line-through;color:#444') +
-      '</div>';
+  if (!item.isWarmup) {
+    html += '<div class="gym-target"><strong>' + weightTxt + '</strong> &nbsp;&times;&nbsp; <strong>' + repsTxt + '</strong></div>';
+    var gymLp = lastPerformance(ex.name);
+    if (gymLp) {
+      html += '<div class="gym-last-perf">Last: ' +
+        lastPerfSetsHtml(gymLp, 'text-decoration:line-through;color:#444') +
+        '</div>';
+    }
   }
 
   if (allDone) {
@@ -1051,13 +1151,15 @@ function gymRenderContent() {
       html += '<button class="gym-done-btn all-done" onclick="closeGymMode()">Workout Done &rarr;</button>';
     }
   } else {
-    html +=
-      '<div class="gym-weight-adj">' +
-      '<button onclick="gymAdjustWeight(5)">+5</button>' +
-      '<button onclick="gymAdjustWeight(10)">+10</button>' +
-      '<button onclick="gymAdjustWeight(15)">+15</button>' +
-      '<button onclick="gymPromptCustomWeight()">+?</button>' +
-      '</div>';
+    if (!item.isWarmup) {
+      html +=
+        '<div class="gym-weight-adj">' +
+        '<button onclick="gymAdjustWeight(5)">+5</button>' +
+        '<button onclick="gymAdjustWeight(10)">+10</button>' +
+        '<button onclick="gymAdjustWeight(15)">+15</button>' +
+        '<button onclick="gymPromptCustomWeight()">+?</button>' +
+        '</div>';
+    }
     html += '<button class="gym-done-btn" onclick="gymMarkSetDone()">&#10003; &nbsp; SET DONE</button>';
   }
 
@@ -1103,9 +1205,9 @@ function gymMarkSetDone() {
     /* All sets in this exercise done */
     gymSetIdx = sets.length - 1;
     gymRenderContent();
-    /* Shorter transition rest before next exercise */
+    /* 60-sec transition rest before next exercise — skip for warmup exercises */
     var nextExIdx = gymExIdx + 1;
-    if (nextExIdx < exs.length) {
+    if (nextExIdx < exs.length && !exs[gymExIdx].isWarmup) {
       gymStartRest(60, exs, gymExIdx, -1);
     }
   }
@@ -1316,16 +1418,66 @@ function deletePlan(id) {
 function loadPlan(id) {
   var plan = plans.find(function(p) { return p.id === id; });
   if (!plan) return;
+  currentPlanId = id;
   var data = plan.data;
   if (Array.isArray(data)) {
-    if (data.length === 1) { loadWorkoutFromPaste(data[0]); return; }
-    _pendingDays = data;
-    // Multi-day: open the paste modal so the day-picker has somewhere to render.
-    document.getElementById('pasteModal').classList.add('open');
-    showDayPicker(data);
+    if (data.length === 1) { currentPlanDayIdx = 0; loadWorkoutFromPaste(data[0]); return; }
+    showPlanDayModal(plan, data);
   } else {
+    currentPlanDayIdx = 0;
     loadWorkoutFromPaste(data);
   }
+}
+
+function showPlanDayModal(plan, days) {
+  _pendingDays = days;
+  /* Compute last-done date for each day from workout history */
+  var daysWithMeta = days.map(function(day, idx) {
+    var lastDone = null;
+    for (var wi = 0; wi < workouts.length; wi++) {
+      var w = workouts[wi];
+      if (w._planId === plan.id && w._planDayName === day.name) {
+        lastDone = w.date; break; /* workouts newest-first */
+      }
+    }
+    return { day: day, idx: idx, lastDone: lastDone };
+  });
+  /* Sort: no last-done first, then by last-done ascending (most recent last = bottom) */
+  daysWithMeta.sort(function(a, b) {
+    if (!a.lastDone && !b.lastDone) return 0;
+    if (!a.lastDone) return -1;
+    if (!b.lastDone) return 1;
+    return new Date(a.lastDone) - new Date(b.lastDone);
+  });
+  var html = daysWithMeta.map(function(item) {
+    var day = item.day;
+    var allEx = day.exercises || [];
+    var detected = allEx.filter(function(ex) { return /^\s*WARM[\s\-]*UP/i.test(ex.notes || ''); });
+    var wc = (day.warmups || []).length + detected.length;
+    var ec = allEx.length - detected.length;
+    var meta = ec + ' exercise' + (ec !== 1 ? 's' : '') + (wc ? ' + ' + wc + ' warm-up' + (wc !== 1 ? 's' : '') : '');
+    var lastStr = item.lastDone ? new Date(item.lastDone).toLocaleDateString(undefined,{month:'short',day:'numeric'}) : 'Not done yet';
+    return '<li class="day-picker-item" onclick="pickPlanDay(' + item.idx + ')">' +
+      '<div style="flex:1;min-width:0"><div class="day-name">' + esc(day.name || 'Day ' + (item.idx + 1)) + '</div>' +
+      '<div class="day-meta">' + meta + '</div></div>' +
+      '<div class="day-last-done' + (item.lastDone ? ' done' : '') + '">' + lastStr + '</div>' +
+      '</li>';
+  }).join('');
+  document.getElementById('planDayModalTitle').textContent = plan.name || 'Select Day';
+  document.getElementById('planDayList').innerHTML = html;
+  document.getElementById('planDayModal').classList.add('open');
+}
+
+function pickPlanDay(idx) {
+  if (!_pendingDays || !_pendingDays[idx]) return;
+  currentPlanDayIdx = idx;
+  document.getElementById('planDayModal').classList.remove('open');
+  loadWorkoutFromPaste(_pendingDays[idx]);
+}
+
+function closePlanDayModal() {
+  document.getElementById('planDayModal').classList.remove('open');
+  _pendingDays = null;
 }
 
 function renderHomePlans() {
@@ -1472,6 +1624,11 @@ function loadWorkoutFromPaste(data) {
   stopTimer();
   var now = Date.now();
   current = { id: now, date: new Date(now).toISOString(), startTime: now, warmups: warmups, exercises: exercises };
+  /* Tag with plan provenance so history can match days and smart-start can track cycles */
+  if (currentPlanId) {
+    current._planId = currentPlanId;
+    current._planDayName = data.name || '';
+  }
   startTimer();
   save();
   closePasteModal();
