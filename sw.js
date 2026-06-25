@@ -1,10 +1,13 @@
-const CACHE_NAME = 'gymlog-v18';
+const CACHE_NAME = 'gymlog-v19';
 const IMG_CACHE  = 'gymlog-exercise-images'; /* persisted across version bumps */
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
-  './icon.svg'
+  './icon.svg',
+  './icon-192.png',
+  './icon-512.png',
+  './icon-512-maskable.png'
 ];
 
 self.addEventListener('install', e => {

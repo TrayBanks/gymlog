@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
 <script>
 /* Apply saved theme before first paint to avoid a flash of the wrong palette.
    Default is dark (the :root vars). Only 'light' sets the data-theme attribute. */
@@ -21,6 +22,7 @@
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{overscroll-behavior:none}
 :root{
   --bg:#0f172a;--surface:#1e293b;--card:#334155;
   --primary:#6C63FF;--primary-hover:#5b54e6;
@@ -136,9 +138,9 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .paste-fab:active{transform:scale(.94);border-color:var(--primary)}
 
 /* Modal */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:50;align-items:flex-end;justify-content:center}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:50;align-items:flex-end;justify-content:center;overscroll-behavior:contain}
 .modal-overlay.open{display:flex}
-.modal{background:var(--bg);border-radius:var(--radius) var(--radius) 0 0;width:100%;max-width:520px;max-height:88dvh;overflow-y:auto;padding:20px;padding-bottom:calc(20px + var(--safe-bot))}
+.modal{background:var(--bg);border-radius:var(--radius) var(--radius) 0 0;width:100%;max-width:520px;max-height:88dvh;overflow-y:auto;overscroll-behavior:contain;padding:20px;padding-bottom:calc(20px + var(--safe-bot))}
 .modal h2{margin-bottom:16px;font-size:1.1rem}
 
 /* Stats */
@@ -246,7 +248,7 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 
 /* Main scrollable content */
 .gym-main{
-  flex:1;overflow-y:auto;overflow-x:hidden;
+  flex:1;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;
   display:flex;flex-direction:column;align-items:center;
   justify-content:center;padding:20px 20px 12px;
   position:relative;
@@ -1008,6 +1010,7 @@ function toggleSetDone(section, ei, si) {
 function removeExercise(section, ei) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   arr.splice(ei, 1);
+  saveCurrent();        // unconditional persist — syncCurrentToPlan early-returns for blank/no-plan workouts
   syncCurrentToPlan();
   renderActive();
 }
@@ -1269,7 +1272,7 @@ function closeGymMode() {
   if (gymPaused) {
     gymPaused = false;
     restPausedAt = 0;
-    if (current) current.startTime += (Date.now() - gymPauseStart);
+    if (current) { current.startTime += (Date.now() - gymPauseStart); saveCurrent(); }
     startTimer();
   }
   gymSkipRest();
@@ -1281,7 +1284,7 @@ function gymTogglePause() {
   var btn = document.getElementById('gymPauseBtn');
   if (gymPaused) {
     gymPaused = false;
-    if (current) current.startTime += (Date.now() - gymPauseStart);
+    if (current) { current.startTime += (Date.now() - gymPauseStart); saveCurrent(); }
     startTimer();
     if (restPausedAt > 0) {
       restRemaining = restPausedAt;
@@ -1913,10 +1916,12 @@ function shareWorkout(wi) {
   var text = lines.join('\n');
   if (navigator.share) {
     navigator.share({ title: 'GymLog Workout', text: text }).catch(function() {});
+  } else if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(function() { showToast('Copied to clipboard!'); })
+      .catch(function() { showToast('Share not supported on this browser'); });
   } else {
-    navigator.clipboard.writeText(text).then(function() { showToast('Copied to clipboard!'); }).catch(function() {
-      showToast('Share not supported on this browser');
-    });
+    showToast('Share not supported on this browser');
   }
 }
 
@@ -1956,7 +1961,10 @@ if (settings.keepAwake) acquireWakeLock();
 
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'visible' && settings.keepAwake) acquireWakeLock();
+  /* Mobile browsers can discard a backgrounded PWA without firing beforeunload — persist on hide. */
+  if (document.visibilityState === 'hidden') saveCurrent();
 });
+window.addEventListener('pagehide', function() { saveCurrent(); });
 
 /* Restore in-progress workout and show recovery toast */
 if (current) {
