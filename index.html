@@ -42,7 +42,7 @@
   --border:#d8dde8;
   --warmup:#b45309;--warmup-bg:rgba(245,158,11,.12);
 }
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-bottom:calc(80px + var(--safe-bot))}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100dvh;padding-bottom:calc(80px + var(--safe-bot));overscroll-behavior:none}
 header{background:var(--surface);padding:16px 20px;padding-top:calc(16px + var(--safe-top));display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
 header h1{font-size:1.3rem;font-weight:800;background:linear-gradient(135deg,#6C63FF,#3B82F6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 
@@ -212,7 +212,7 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
   display:none;position:fixed;inset:0;
   background:#020408;color:#fff;
   flex-direction:column;z-index:100;
-  overflow:hidden;user-select:none;
+  overflow:hidden;user-select:none;overscroll-behavior:none;
 }
 #gymOverlay.open{display:flex}
 
@@ -378,6 +378,18 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
   font-weight:600;cursor:pointer;min-height:48px;
 }
 .gym-skip-btn:active{color:#fff;border-color:#555}
+
+/* ── Install banner ── */
+#installBanner{display:none;align-items:center;gap:10px;padding:10px 16px;background:rgba(108,99,255,.1);border-bottom:1px solid rgba(108,99,255,.2);font-size:.82rem}
+#installBanner.show{display:flex}
+#installBanner span{flex:1;color:var(--text);font-weight:500}
+#installBanner button{padding:6px 14px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap}
+#installBanner .ib-dismiss{background:none;color:var(--muted);padding:6px;font-size:1.1rem;min-width:unset}
+
+/* ── Toast notification ── */
+#toast{position:fixed;bottom:calc(90px + var(--safe-bot));left:50%;transform:translateX(-50%) translateY(20px);background:#1a1a2e;color:#fff;padding:10px 18px;border-radius:12px;font-size:.85rem;font-weight:600;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;z-index:9999;white-space:nowrap;border:1px solid rgba(108,99,255,.3)}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
 .gym-pause-btn{
   background:none;border:1px solid #2a2a2a;color:#666;
   border-radius:8px;padding:8px 10px;font-size:1rem;
@@ -409,6 +421,12 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 </head>
 <body>
 
+<div id="installBanner">
+  <span>Add GymLog to your home screen for the best experience.</span>
+  <button onclick="triggerInstall()">Install</button>
+  <button class="ib-dismiss" onclick="dismissInstall()">&#x2715;</button>
+</div>
+
 <header>
 <h1>GymLog</h1>
 <div style="display:flex;align-items:center;gap:8px">
@@ -416,6 +434,8 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <button class="icon-btn" onclick="openSettings()" title="Settings" aria-label="Settings">&#9881;</button>
 </div>
 </header>
+
+<div id="toast"></div>
 
 <nav>
 <button class="active" onclick="switchTab('log',this)">Log</button>
@@ -611,6 +631,7 @@ var DB_KEY = 'gymlog_workouts';
 var EXERCISES_KEY = 'gymlog_exercises';
 var PLANS_KEY = 'gymlog_plans';
 var SETTINGS_KEY = 'gymlog_settings';
+var CURRENT_KEY = 'gymlog_current';
 
 var workouts = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
 var currentPlanId = null;   /* id of the plan that loaded the current workout */
@@ -674,7 +695,9 @@ if (!plans) {
   }];
   localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
 }
+var _savedCurrent = localStorage.getItem(CURRENT_KEY);
 var current = null;
+try { current = _savedCurrent ? JSON.parse(_savedCurrent) : null; } catch(e) { current = null; }
 
 /* Settings (new gymlog_settings key; independent of save()) */
 var settings = loadSettings();
@@ -693,10 +716,15 @@ var gymPaused = false;
 var gymPauseStart = 0;
 var restPausedAt = 0;
 
+function saveCurrent() {
+  if (current) localStorage.setItem(CURRENT_KEY, JSON.stringify(current));
+  else localStorage.removeItem(CURRENT_KEY);
+}
 function save() {
   localStorage.setItem(DB_KEY, JSON.stringify(workouts));
   localStorage.setItem(EXERCISES_KEY, JSON.stringify([...new Set(knownExercises)]));
   localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+  saveCurrent();
 }
 
 /* ── Settings ───────────────────────────────────── */
@@ -844,7 +872,7 @@ function startWorkout() {
   if (plans.length === 0) {
     var now = Date.now();
     current = { id: now, date: new Date(now).toISOString(), startTime: now, warmups: [], exercises: [] };
-    startTimer(); renderActive(); return;
+    saveCurrent(); startTimer(); renderActive(); return;
   }
   /* Find last-used plan from workout history, fall back to most recently saved plan */
   var lastPlan = null;
@@ -897,6 +925,7 @@ function cancelWorkout() {
     stopTimer();
     if (document.getElementById('gymOverlay').classList.contains('open')) closeGymMode();
     current = null;
+    saveCurrent();
     renderActive();
   }
 }
@@ -950,23 +979,28 @@ function addSet(section, ei) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   var last = arr[ei].sets[arr[ei].sets.length - 1] || {};
   arr[ei].sets.push({ weight: last.weight || '', reps: last.reps || '', rpe: '' });
+  saveCurrent();
   renderActive();
 }
 function removeSet(section, ei, si) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   arr[ei].sets.splice(si, 1);
   if (arr[ei].sets.length === 0) arr.splice(ei, 1);
+  saveCurrent();
   renderActive();
 }
 function updateSet(section, ei, si, field, val) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   arr[ei].sets[si][field] = val;
+  saveCurrent();
 }
 function toggleSetDone(section, ei, si) {
   var arr = section === 'warmup' ? current.warmups : current.exercises;
   var set = arr[ei] && arr[ei].sets[si];
   if (!set) return;
   set._done = !set._done;
+  saveCurrent();
+  if (navigator.vibrate) navigator.vibrate(40);
   renderActive();
   /* Keep gym mode (pips / counter / first-incomplete) in sync if it's open */
   if (document.getElementById('gymOverlay').classList.contains('open')) gymRenderContent();
@@ -1517,7 +1551,10 @@ function renderHistory() {
       '<div><h3>' + dateStr + durBadge + '</h3>' +
       '<div style="font-size:.73rem;color:var(--muted);margin:3px 0 6px">' + timeStr + '</div>' +
       '<div class="meta">' + allEx.length + ' exercises &middot; ' + totalSets + ' sets &middot; ' + Math.round(totalVol).toLocaleString() + ' lbs</div></div>' +
+      '<div style="display:flex;gap:6px">' +
+      '<button class="remove-set" onclick="shareWorkout(' + wi + ')" title="Share">&#128279;</button>' +
       '<button class="remove-set" onclick="deleteWorkout(' + wi + ')" title="Delete">&#128465;&#65039;</button>' +
+      '</div>' +
       '</div>' + rows + '</div>';
   }).join('');
 }
@@ -1848,15 +1885,86 @@ function loadWorkoutFromPaste(data) {
 /* ── Util ───────────────────────────────────────── */
 function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
+/* ── Toast ──────────────────────────────────────── */
+var _toastTimer = null;
+function showToast(msg, duration) {
+  var el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add('show');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(function() { el.classList.remove('show'); }, duration || 3000);
+}
+
+/* ── Share workout ──────────────────────────────── */
+function shareWorkout(wi) {
+  var w = workouts[wi];
+  if (!w) return;
+  var allEx = (w.warmups || []).concat(w.exercises || []);
+  var d = new Date(w.date);
+  var dateStr = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  var lines = ['🏋️ GymLog — ' + dateStr];
+  if (w.duration) lines.push('⏱️ ' + formatDuration(w.duration));
+  lines.push('');
+  allEx.forEach(function(ex) {
+    var sets = ex.sets.map(function(s) { return (s.weight || '—') + '×' + (s.reps || '—'); }).join(', ');
+    lines.push(ex.name + ': ' + sets);
+  });
+  var text = lines.join('\n');
+  if (navigator.share) {
+    navigator.share({ title: 'GymLog Workout', text: text }).catch(function() {});
+  } else {
+    navigator.clipboard.writeText(text).then(function() { showToast('Copied to clipboard!'); }).catch(function() {
+      showToast('Share not supported on this browser');
+    });
+  }
+}
+
+/* ── Install prompt ─────────────────────────────── */
+var _installPrompt = null;
+window.addEventListener('beforeinstallprompt', function(e) {
+  e.preventDefault();
+  _installPrompt = e;
+  var banner = document.getElementById('installBanner');
+  if (banner && localStorage.getItem('gymlog_install_dismissed') !== '1') banner.classList.add('show');
+});
+window.addEventListener('appinstalled', function() {
+  var banner = document.getElementById('installBanner');
+  if (banner) banner.classList.remove('show');
+  _installPrompt = null;
+});
+function triggerInstall() {
+  if (!_installPrompt) return;
+  _installPrompt.prompt();
+  _installPrompt.userChoice.then(function() { _installPrompt = null; });
+  document.getElementById('installBanner').classList.remove('show');
+}
+function dismissInstall() {
+  localStorage.setItem('gymlog_install_dismissed', '1');
+  document.getElementById('installBanner').classList.remove('show');
+}
+
+/* ── Warn before page unload during active workout ── */
+window.addEventListener('beforeunload', function(e) {
+  if (current) { e.preventDefault(); e.returnValue = ''; }
+});
+
 /* ── Init ───────────────────────────────────────── */
-applyTheme();              // head script applies before paint; this keeps DOM in sync
+applyTheme();
 syncSettingsUI();
 if (settings.keepAwake) acquireWakeLock();
 
-/* Wake Lock is auto-released when the tab is hidden — re-acquire on return if enabled. */
 document.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'visible' && settings.keepAwake) acquireWakeLock();
 });
+
+/* Restore in-progress workout and show recovery toast */
+if (current) {
+  var _minsAgo = Math.floor((Date.now() - current.startTime) / 60000);
+  var _agoStr = _minsAgo < 60 ? _minsAgo + 'm ago' : Math.floor(_minsAgo / 60) + 'h ago';
+  startTimer();
+  setTimeout(function() { showToast('Workout restored from ' + _agoStr + ' ✔️', 4000); }, 600);
+}
 
 renderActive();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function() {});
