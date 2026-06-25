@@ -948,18 +948,16 @@ function syncCurrentToPlan() {
   if (!plan) return;
   var dayData = Array.isArray(plan.data) ? plan.data[currentPlanDayIdx] : plan.data;
   if (!dayData) return;
-  var allExercises = [];
-  (current.warmups || []).forEach(function(ex) {
-    allExercises.push({ name: ex.name, sets: ex.sets.length,
+  dayData.warmups = (current.warmups || []).map(function(ex) {
+    return { name: ex.name, sets: ex.sets.length,
       reps: ex.sets[0] ? ex.sets[0].reps || '' : '',
-      rest: 0, notes: ex._notes || '' });
+      rest: ex._rest != null ? ex._rest : 0, notes: ex._notes || '' };
   });
-  (current.exercises || []).forEach(function(ex) {
-    allExercises.push({ name: ex.name, sets: ex.sets.length,
+  dayData.exercises = (current.exercises || []).map(function(ex) {
+    return { name: ex.name, sets: ex.sets.length,
       reps: ex.sets[0] ? ex.sets[0].reps || '' : '',
-      rest: ex._rest != null ? ex._rest : null, notes: ex._notes || '' });
+      rest: ex._rest != null ? ex._rest : null, notes: ex._notes || '' };
   });
-  dayData.exercises = allExercises;
   save();
 }
 
