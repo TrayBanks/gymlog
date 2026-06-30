@@ -1817,6 +1817,21 @@ function closePlanDayModal() {
   _pendingDays = null;
 }
 
+/* Count working sets vs warm-ups across all days of a plan. Warm-ups are
+   either an explicit "warmups" array or exercises whose notes start WARM-UP. */
+function planCounts(p) {
+  var days = Array.isArray(p.data) ? p.data : [p.data];
+  var re = /^\s*WARM[\s\-]*UP/i;
+  var warmups = 0, working = 0;
+  days.forEach(function(day) {
+    var allEx = (day && day.exercises) || [];
+    var detected = allEx.filter(function(ex) { return re.test(ex.notes || ''); });
+    warmups += ((day && day.warmups) || []).length + detected.length;
+    working += allEx.length - detected.length;
+  });
+  return { days: days.length, warmups: warmups, working: working };
+}
+
 function renderHomePlans() {
   var section = document.getElementById('homePlansSection');
   var list = document.getElementById('homePlansList');
@@ -1824,7 +1839,11 @@ function renderHomePlans() {
   if (current || plans.length === 0) { section.style.display = 'none'; return; }
   section.style.display = '';
   list.innerHTML = plans.map(function(p) {
-    var meta = p.days > 1 ? p.days + ' days' : (p.exercises ? p.exercises + ' exercises' : '');
+    var c = planCounts(p);
+    /* Show warm-ups alongside working sets so the card reflects the full plan */
+    var body = c.working + ' exercise' + (c.working !== 1 ? 's' : '') +
+      (c.warmups ? ' + ' + c.warmups + ' warm-up' + (c.warmups !== 1 ? 's' : '') : '');
+    var meta = c.days > 1 ? c.days + ' days &middot; ' + body : body;
     return '<div class="plan-item">' +
       '<div class="plan-info"><div class="plan-name">' + esc(p.name) + '</div>' +
       (meta ? '<div class="plan-meta">' + meta + '</div>' : '') + '</div>' +
