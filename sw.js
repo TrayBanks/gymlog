@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gymlog-v22';
+const CACHE_NAME = 'gymlog-v23';
 const IMG_CACHE  = 'gymlog-exercise-images'; /* persisted across version bumps */
 const ASSETS = [
   './',
@@ -30,14 +30,16 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  const req = e.request;
+
   /* Cache-first strategy for exercise demo images (wger.de CDN) */
-  if (/wger\.de.*\.(jpg|jpeg|png|gif|webp)/i.test(e.request.url)) {
+  if (/wger\.de.*\.(jpg|jpeg|png|gif|webp)/i.test(req.url)) {
     e.respondWith(
       caches.open(IMG_CACHE).then(cache =>
-        cache.match(e.request).then(cached => {
+        cache.match(req).then(cached => {
           if (cached) return cached;
-          return fetch(e.request).then(response => {
-            if (response.ok) cache.put(e.request, response.clone());
+          return fetch(req).then(response => {
+            if (response.ok) cache.put(req, response.clone());
             return response;
           });
         })
@@ -45,8 +47,28 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
-  /* App shell: cache-first */
+
+  /* Network-first for the HTML shell (page navigations) so a fresh deploy
+     shows up immediately when online; fall back to cache when offline. This
+     avoids the "I deployed but still see the old version" PWA cache trap. */
+  const accept = req.headers.get('accept') || '';
+  const isNav = req.mode === 'navigate' ||
+    (req.method === 'GET' && accept.indexOf('text/html') !== -1);
+  if (isNav) {
+    e.respondWith(
+      fetch(req)
+        .then(response => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(c => c.put('./index.html', copy)).catch(() => {});
+          return response;
+        })
+        .catch(() => caches.match(req).then(c => c || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  /* Everything else (manifest, icons, sw assets): cache-first for speed */
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    caches.match(req).then(cached => cached || fetch(req))
   );
 });
