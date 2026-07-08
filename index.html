@@ -648,6 +648,7 @@ Supports a single workout <em>or</em> an array of multiple days. Optional <code 
       <div class="gym-rest-bar-wrap"><div class="gym-rest-bar" id="gymRestBar" style="width:100%"></div></div>
       <div class="gym-rest-next" id="gymRestNext"></div>
       <div class="gym-rest-skip-row">
+        <button class="gym-skip-btn" id="gymRestPauseBtn" onclick="gymTogglePause()">⏸ Pause</button>
         <button class="gym-skip-btn" onclick="gymSkipRest()">Skip Rest</button>
       </div>
     </div>
@@ -1324,6 +1325,7 @@ function closeGymMode() {
 
 function gymTogglePause() {
   var btn = document.getElementById('gymPauseBtn');
+  var restBtn = document.getElementById('gymRestPauseBtn');
   if (gymPaused) {
     gymPaused = false;
     if (current) { current.startTime += (Date.now() - gymPauseStart); saveCurrent(); }
@@ -1352,6 +1354,7 @@ function gymTogglePause() {
       }
     }
     if (btn) { btn.textContent = '⏸'; btn.classList.remove('paused'); }
+    if (restBtn) { restBtn.textContent = '⏸ Pause'; restBtn.classList.remove('paused'); }
   } else {
     gymPaused = true;
     gymPauseStart = Date.now();
@@ -1367,6 +1370,7 @@ function gymTogglePause() {
       }
     }
     if (btn) { btn.textContent = '▶'; btn.classList.add('paused'); }
+    if (restBtn) { restBtn.textContent = '▶ Resume'; restBtn.classList.add('paused'); }
   }
 }
 

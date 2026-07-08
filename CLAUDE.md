@@ -24,13 +24,25 @@ Never merge a PR yourself. The user's merge in the GitHub UI is the approval.
 ## Previewing a branch
 
 **Remote/web sessions:** publish the branch's `index.html` as a Claude
-Artifact so the user can live-test in the browser. The artifact wrapper adds
-its own `<html>/<head>/<body>` skeleton, so strip the outer document tags
-first: concatenate the inner content of `<head>` (styles, meta) and `<body>`
-(markup, scripts) into a single fragment file and publish that. The service
-worker registration fails silently in artifacts (`.catch` is already in
-place) and localStorage works, so the app is fully testable except for
-PWA-install/offline behavior — note that caveat to the user.
+Artifact so the user can live-test in the browser:
+
+1. Strip the outer document tags (the artifact wrapper adds its own
+   `<html>/<head>/<body>` skeleton): concatenate the inner content of
+   `<head>` (styles, meta) and `<body>` (markup, scripts) into a single
+   fragment file.
+2. Append `preview-feedback-widget.html` (in the repo root) to the fragment.
+   It adds a tap-to-annotate feedback mode: the user taps elements, writes
+   notes, and hits "Copy report" to paste structured feedback (element
+   selectors included) back into the session. Never ship the widget in the
+   real `index.html`.
+3. Publish the fragment with the Artifact tool. Republish to the same file
+   path after each fix so the URL stays stable.
+
+Artifact sandbox caveats to relay to the user: the service worker fails
+silently (no PWA-install/offline testing) and **all external network
+requests are blocked** — e.g. warm-up demo images fetched from the wger.de
+API will always show the placeholder in previews even though they work in
+the deployed app. localStorage works but is separate from the phone's data.
 
 **Local sessions:** run a preview server on the feature branch and share the
 URL:
