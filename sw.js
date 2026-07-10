@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gymlog-v25';
+const CACHE_NAME = 'gymlog-v26';
 const IMG_CACHE  = 'gymlog-exercise-images'; /* persisted across version bumps */
 const ASSETS = [
   './',

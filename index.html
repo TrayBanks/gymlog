@@ -582,12 +582,15 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <h2>&#128203; Paste from AI</h2>
 <p class="paste-info">
 Paste a workout plan in JSON format from <strong>Claude</strong>, <strong>ChatGPT</strong>, or any AI.<br><br>
-Supports a single workout <em>or</em> an array of multiple days. Optional <code style="background:var(--card);padding:2px 6px;border-radius:4px;font-size:.78rem">warmups</code> adds a warm-up section.
+Supports a single workout <em>or</em> an array of multiple days. Optional <code style="background:var(--card);padding:2px 6px;border-radius:4px;font-size:.78rem">warmups</code> array, or flag any item in <code style="background:var(--card);padding:2px 6px;border-radius:4px;font-size:.78rem">exercises</code> with <code style="background:var(--card);padding:2px 6px;border-radius:4px;font-size:.78rem">"warmup": true</code>.
 </p>
 <div class="paste-example">[
   { "name": "Push Day",
     "warmups": [{"name":"Band Pull-Apart","sets":2,"reps":15,"rest":30}],
-    "exercises": [{"name":"Bench Press","sets":4,"reps":8,"rest":120,"notes":"Controlled tempo"}]
+    "exercises": [
+      {"name":"90/90 Hip Stretch","sets":2,"reps":1,"warmup":true,"notes":"Hold 45s/side"},
+      {"name":"Bench Press","sets":4,"reps":8,"rest":120,"notes":"Controlled tempo"}
+    ]
   }
 ]</div>
 <div id="pasteInputArea">
@@ -1793,7 +1796,7 @@ function showPlanDayModal(plan, days) {
   var html = daysWithMeta.map(function(item) {
     var day = item.day;
     var allEx = day.exercises || [];
-    var detected = allEx.filter(function(ex) { return /^\s*WARM[\s\-]*UP/i.test(ex.notes || ''); });
+    var detected = allEx.filter(isWarmupExercise);
     var wc = (day.warmups || []).length + detected.length;
     var ec = allEx.length - detected.length;
     var meta = ec + ' exercise' + (ec !== 1 ? 's' : '') + (wc ? ' + ' + wc + ' warm-up' + (wc !== 1 ? 's' : '') : '');
@@ -1821,15 +1824,22 @@ function closePlanDayModal() {
   _pendingDays = null;
 }
 
+/* An exercise inside a flat "exercises" array counts as a warm-up if it
+   carries an explicit "warmup": true flag, or (for older pastes) if its
+   notes start with "WARM-UP". The explicit flag is authoritative — it
+   doesn't depend on guessing an AI's exact phrasing. */
+function isWarmupExercise(ex) {
+  return ex.warmup === true || /^\s*WARM[\s\-]*UP/i.test(ex.notes || '');
+}
+
 /* Count working sets vs warm-ups across all days of a plan. Warm-ups are
-   either an explicit "warmups" array or exercises whose notes start WARM-UP. */
+   either an explicit "warmups" array or exercises flagged via isWarmupExercise. */
 function planCounts(p) {
   var days = Array.isArray(p.data) ? p.data : [p.data];
-  var re = /^\s*WARM[\s\-]*UP/i;
   var warmups = 0, working = 0;
   days.forEach(function(day) {
     var allEx = (day && day.exercises) || [];
-    var detected = allEx.filter(function(ex) { return re.test(ex.notes || ''); });
+    var detected = allEx.filter(isWarmupExercise);
     warmups += ((day && day.warmups) || []).length + detected.length;
     working += allEx.length - detected.length;
   });
@@ -1920,7 +1930,7 @@ function showDayPicker(days) {
   var html = '';
   days.forEach(function(day, idx) {
     var allEx = day.exercises || [];
-    var detectedWarmups = allEx.filter(function(ex) { return /^\s*WARM[\s\-]*UP/i.test(ex.notes || ''); });
+    var detectedWarmups = allEx.filter(isWarmupExercise);
     var wc = (day.warmups || []).length + detectedWarmups.length;
     var ec = allEx.length - detectedWarmups.length;
     var meta = ec + ' exercise' + (ec !== 1 ? 's' : '') + (wc ? ' + ' + wc + ' warm-up' + (wc !== 1 ? 's' : '') : '');
@@ -1953,7 +1963,7 @@ function loadWorkoutFromPaste(data) {
   });
   (data.exercises || []).forEach(function(ex) {
     if (!ex.name) return;
-    var isWarmup = /^\s*WARM[\s\-]*UP/i.test(ex.notes || '');
+    var isWarmup = isWarmupExercise(ex);
     var n = parseInt(ex.sets) || (isWarmup ? 2 : 3);
     var r = ex.reps ? String(ex.reps) : '';
     var lp = lastPerformance(ex.name);
