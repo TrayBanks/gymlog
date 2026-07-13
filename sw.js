@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gymlog-v26';
+const CACHE_NAME = 'gymlog-v27';
 const IMG_CACHE  = 'gymlog-exercise-images'; /* persisted across version bumps */
 const ASSETS = [
   './',
@@ -26,6 +26,19 @@ self.addEventListener('activate', e => {
         keys.filter(k => k !== CACHE_NAME && k !== IMG_CACHE).map(k => caches.delete(k))
       )
     ).then(() => self.clients.claim())
+  );
+});
+
+/* Tapping a rest/reminder notification focuses the app (or opens it) */
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const c of list) {
+        if ('focus' in c) return c.focus();
+      }
+      return clients.openWindow('./');
+    })
   );
 });
 
