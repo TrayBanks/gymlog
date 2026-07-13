@@ -558,6 +558,30 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 </div>
 <div class="settings-row">
 <div>
+<div class="settings-label">Rest-end sound</div>
+<div class="settings-desc">Short beep when the rest timer hits zero.</div>
+</div>
+<div class="settings-control">
+<label class="switch">
+<input type="checkbox" id="soundToggle" onchange="toggleSound(this.checked)">
+<span class="slider"></span>
+</label>
+</div>
+</div>
+<div class="settings-row">
+<div>
+<div class="settings-label">Notifications</div>
+<div class="settings-desc" id="notifyDesc">Rest-over and workout-reminder alerts when the app is in the background.</div>
+</div>
+<div class="settings-control">
+<label class="switch">
+<input type="checkbox" id="notifyToggle" onchange="toggleNotify(this.checked)">
+<span class="slider"></span>
+</label>
+</div>
+</div>
+<div class="settings-row">
+<div>
 <div class="settings-label">Default rest time</div>
 <div class="settings-desc">Between working sets. Warmup sets have no rest.</div>
 </div>
@@ -750,6 +774,9 @@ var gymSetIdx = 0;
 var restInterval = null;
 var restRemaining = 0;
 var restTotal = 0;
+var restEndsAt = 0;      /* wall-clock end so throttled background ticks stay accurate */
+var restAlertBody = '';  /* plain-text label for the rest-end notification */
+var audioCtx = null;
 var gymPaused = false;
 var gymPauseStart = 0;
 var restPausedAt = 0;
@@ -772,7 +799,9 @@ function loadSettings() {
   return {
     theme: s.theme === 'light' ? 'light' : 'dark',
     keepAwake: s.keepAwake === true,
-    defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90
+    defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90,
+    sound: s.sound !== false,   /* default on */
+    notify: s.notify === true   /* default off — needs permission grant */
   };
 }
 function saveSettings() {
@@ -823,6 +852,78 @@ function setDefaultRest(secs) {
   syncSettingsUI();
 }
 
+/* ── Rest-end alerts: sound + background notification ── */
+/* AudioContext must be created/resumed inside a user gesture on mobile.
+   Rest always starts from a tap (set done / complete set), so prime there. */
+function primeAudio() {
+  if (!settings.sound) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { audioCtx = null; }
+}
+
+function playBeep() {
+  if (!settings.sound || !audioCtx) return;
+  try {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    var t = audioCtx.currentTime;
+    [0, 0.22].forEach(function(off) {  /* two short 880 Hz beeps */
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t + off);
+      g.gain.exponentialRampToValueAtTime(0.35, t + off + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.18);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t + off); o.stop(t + off + 0.2);
+    });
+  } catch (e) {}
+}
+
+/* Fire an OS notification only when the app is hidden and permission granted.
+   PWAs need the service-worker registration; plain pages fall back to new Notification. */
+function notifyBg(title, body) {
+  if (!settings.notify || document.visibilityState === 'visible') return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  var opts = { body: body, icon: 'icon-192.png', badge: 'icon-192.png', tag: 'gymlog-alert' };
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.getRegistration().then(function(reg) {
+      if (reg && reg.showNotification) reg.showNotification(title, opts);
+      else new Notification(title, opts);
+    }).catch(function() { try { new Notification(title, opts); } catch (e) {} });
+  } else {
+    try { new Notification(title, opts); } catch (e) {}
+  }
+}
+
+function restEndAlert(label) {
+  if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+  playBeep();
+  notifyBg('Rest over ⏱️', label || 'Back to work');
+}
+
+function toggleSound(on) {
+  settings.sound = !!on;
+  saveSettings();
+  if (on) primeAudio(); /* toggle tap is a gesture — unlock audio now */
+}
+
+function toggleNotify(on) {
+  if (!on) {
+    settings.notify = false;
+    saveSettings();
+    syncSettingsUI();
+    return;
+  }
+  if (!('Notification' in window)) { syncSettingsUI(); return; }
+  Notification.requestPermission().then(function(perm) {
+    settings.notify = (perm === 'granted');
+    saveSettings();
+    syncSettingsUI();
+  });
+}
+
 function syncSettingsUI() {
   document.querySelectorAll('#themeSeg button').forEach(function(b) {
     b.classList.toggle('active', b.getAttribute('data-theme-val') === settings.theme);
@@ -838,6 +939,19 @@ function syncSettingsUI() {
   if (!WAKE_SUPPORTED) {
     var d = document.getElementById('wakeDesc');
     if (d) d.textContent = 'Not supported in this browser/context (needs HTTPS or localhost).';
+  }
+  var soundToggle = document.getElementById('soundToggle');
+  if (soundToggle) soundToggle.checked = settings.sound;
+  var notifToggle = document.getElementById('notifyToggle');
+  if (notifToggle) {
+    var notifSupported = ('Notification' in window);
+    notifToggle.checked = settings.notify && notifSupported && Notification.permission === 'granted';
+    notifToggle.disabled = !notifSupported || (notifSupported && Notification.permission === 'denied');
+    var nd = document.getElementById('notifyDesc');
+    if (nd) {
+      if (!notifSupported) nd.textContent = 'Not supported in this browser.';
+      else if (Notification.permission === 'denied') nd.textContent = 'Blocked — allow notifications for this site in your browser settings.';
+    }
   }
 }
 
@@ -859,7 +973,22 @@ function startTimer() {
     if (el) el.textContent = t;
     var ge = document.getElementById('gymOverallTimer');
     if (ge) ge.textContent = t;
+    checkLongWorkout();
   }, 1000);
+}
+
+/* One-time nudge if a workout has been running 2h+ — usually means it was
+   never finished, which skews duration stats. Flag rides on the workout
+   object so it survives reloads and never repeats. */
+var LONG_WORKOUT_MS = 2 * 3600 * 1000;
+function checkLongWorkout() {
+  if (!current || current._longReminded) return;
+  if (Date.now() - current.startTime < LONG_WORKOUT_MS) return;
+  current._longReminded = true;
+  saveCurrent();
+  var msg = 'Workout has been running 2h+ — finish or discard it to keep your stats accurate.';
+  notifyBg('Still working out? 🏋️', msg);
+  showToast('⏱️ ' + msg, 6000);
 }
 
 function stopTimer() {
@@ -1044,7 +1173,7 @@ function toggleSetDone(section, ei, si) {
      has its own full-screen rest overlay, so skip the popup there. */
   if (set._done && !gymOpen) {
     var restSecs = arr[ei]._rest != null ? arr[ei]._rest : settings.defaultRest;
-    startRestPopup(restSecs);
+    startRestPopup(restSecs, arr[ei].name);
   } else if (!set._done && !gymOpen) {
     dismissRestPopup();
   }
@@ -1335,17 +1464,18 @@ function gymTogglePause() {
     startTimer();
     if (restPausedAt > 0) {
       restRemaining = restPausedAt;
+      restEndsAt = Date.now() + restPausedAt * 1000;
       restPausedAt = 0;
       if (restInterval) clearInterval(restInterval);
       restInterval = setInterval(function() {
-        restRemaining--;
+        restRemaining = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
         var timeEl = document.getElementById('gymRestTime');
         var barEl = document.getElementById('gymRestBar');
         if (timeEl) timeEl.textContent = pad(Math.floor(restRemaining / 60)) + ':' + pad(restRemaining % 60);
         if (barEl) barEl.style.width = (restRemaining / restTotal * 100) + '%';
         if (restRemaining <= 0) {
           gymSkipRest();
-          if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+          restEndAlert(restAlertBody);
           gymRenderContent();
         }
       }, 1000);
@@ -1533,13 +1663,18 @@ function gymGoPrev() {
 function gymStartRest(secs, exs, curExIdx, nextSetIdx) {
   restTotal = secs;
   restRemaining = secs;
+  restEndsAt = Date.now() + secs * 1000;
+  primeAudio(); /* rest starts from a tap — unlock audio while we have the gesture */
 
-  /* "Up next" label */
+  /* "Up next" label (plain copy kept for the notification body) */
   var nextLabel = '';
+  restAlertBody = 'Back to work';
   if (nextSetIdx >= 0) {
     nextLabel = 'Next: Set ' + (nextSetIdx + 1) + ' — ' + esc(exs[curExIdx].ex.name);
+    restAlertBody = exs[curExIdx].ex.name + ', set ' + (nextSetIdx + 1);
   } else if (curExIdx + 1 < exs.length) {
     nextLabel = 'Next exercise: ' + esc(exs[curExIdx + 1].ex.name);
+    restAlertBody = 'Next exercise: ' + exs[curExIdx + 1].ex.name;
   }
   document.getElementById('gymRestNext').innerHTML = nextLabel ? 'Up next: <strong>' + nextLabel + '</strong>' : '';
 
@@ -1554,14 +1689,16 @@ function gymStartRest(secs, exs, curExIdx, nextSetIdx) {
 
   if (restInterval) clearInterval(restInterval);
   restInterval = setInterval(function() {
-    restRemaining--;
+    /* Wall-clock, not tick-count: background throttling can starve the interval,
+       so a late tick must still land the alert on time. */
+    restRemaining = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
     var timeEl = document.getElementById('gymRestTime');
     var barEl = document.getElementById('gymRestBar');
     if (timeEl) timeEl.textContent = pad(Math.floor(restRemaining / 60)) + ':' + pad(restRemaining % 60);
     if (barEl) barEl.style.width = (restRemaining / restTotal * 100) + '%';
     if (restRemaining <= 0) {
       gymSkipRest();
-      if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+      restEndAlert(restAlertBody);
       gymRenderContent();
     }
   }, 1000);
@@ -1579,12 +1716,17 @@ function gymSkipRest() {
 var restPopupInterval = null;
 var restPopupRemaining = 0;
 var restPopupTotal = 0;
+var restPopupEndsAt = 0;
+var restPopupAlertBody = '';
 
-function startRestPopup(secs) {
+function startRestPopup(secs, exName) {
   secs = parseInt(secs, 10);
   if (!secs || secs <= 0) { dismissRestPopup(); return; }
+  primeAudio(); /* called from the set-done tap — unlock audio in the gesture */
   restPopupTotal = secs;
   restPopupRemaining = secs;
+  restPopupEndsAt = Date.now() + secs * 1000;
+  restPopupAlertBody = exName ? 'Next set — ' + exName : 'Back to work';
   var popup = document.getElementById('restPopup');
   var timeEl = document.getElementById('restPopupTime');
   var barEl = document.getElementById('restPopupBar');
@@ -1596,14 +1738,14 @@ function startRestPopup(secs) {
   barEl.style.transition = 'width 1s linear';
   if (restPopupInterval) clearInterval(restPopupInterval);
   restPopupInterval = setInterval(function() {
-    restPopupRemaining--;
+    restPopupRemaining = Math.max(0, Math.ceil((restPopupEndsAt - Date.now()) / 1000));
     var t = document.getElementById('restPopupTime');
     var b = document.getElementById('restPopupBar');
     if (t) t.textContent = pad(Math.floor(restPopupRemaining / 60)) + ':' + pad(restPopupRemaining % 60);
     if (b) b.style.width = (restPopupRemaining / restPopupTotal * 100) + '%';
     if (restPopupRemaining <= 0) {
       dismissRestPopup();
-      if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+      restEndAlert(restPopupAlertBody);
     }
   }, 1000);
 }
@@ -1612,6 +1754,7 @@ function restPopupAdd(secs) {
   if (!restPopupInterval) return;
   restPopupRemaining += secs;
   restPopupTotal += secs;
+  restPopupEndsAt += secs * 1000;
   var t = document.getElementById('restPopupTime');
   var b = document.getElementById('restPopupBar');
   if (t) t.textContent = pad(Math.floor(restPopupRemaining / 60)) + ':' + pad(restPopupRemaining % 60);
