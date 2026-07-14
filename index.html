@@ -570,6 +570,31 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 </div>
 </div>
 </div>
+<div class="settings-row">
+<div>
+<div class="settings-label">Backup</div>
+<div class="settings-desc">Export saves everything to a JSON file. Import replaces all current data with a backup file.</div>
+</div>
+<div class="settings-control" style="gap:8px">
+<button class="btn btn-ghost btn-sm" onclick="exportData()">Export</button>
+<button class="btn btn-ghost btn-sm" onclick="triggerImport()">Import</button>
+</div>
+</div>
+<input type="file" id="importFileInput" accept="application/json,.json" style="display:none" onchange="handleImportFile(event)">
+<div class="settings-row">
+<div>
+<div class="settings-label">Auto-backup</div>
+<div class="settings-desc">Downloads a backup automatically on this schedule when you open the app.</div>
+</div>
+<div class="settings-control">
+<div class="theme-seg" id="autoBackupSeg">
+<button type="button" data-autobackup-val="off" onclick="setAutoBackup('off')">Off</button>
+<button type="button" data-autobackup-val="daily" onclick="setAutoBackup('daily')">Daily</button>
+<button type="button" data-autobackup-val="weekly" onclick="setAutoBackup('weekly')">Weekly</button>
+<button type="button" data-autobackup-val="monthly" onclick="setAutoBackup('monthly')">Monthly</button>
+</div>
+</div>
+</div>
 <div style="display:flex;gap:8px;margin-top:18px">
 <button class="btn btn-ghost" style="flex:1" onclick="closeSettings()">Done</button>
 </div>
@@ -738,6 +763,7 @@ var current = null;
 try { current = _savedCurrent ? JSON.parse(_savedCurrent) : null; } catch(e) { current = null; }
 
 /* Settings (new gymlog_settings key; independent of save()) */
+var AUTO_BACKUP_INTERVALS = { daily: 864e5, weekly: 6048e5, monthly: 2592e6 };
 var settings = loadSettings();
 var wakeLock = null;
 
@@ -766,14 +792,20 @@ function save() {
 }
 
 /* ── Settings ───────────────────────────────────── */
-function loadSettings() {
-  var s = {};
-  try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (e) { s = {}; }
+function normalizeSettings(s) {
+  s = (s && typeof s === 'object') ? s : {};
   return {
     theme: s.theme === 'light' ? 'light' : 'dark',
     keepAwake: s.keepAwake === true,
-    defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90
+    defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90,
+    autoBackup: AUTO_BACKUP_INTERVALS[s.autoBackup] ? s.autoBackup : 'off',
+    lastAutoBackup: typeof s.lastAutoBackup === 'number' ? s.lastAutoBackup : 0
   };
+}
+function loadSettings() {
+  var s = {};
+  try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (e) { s = {}; }
+  return normalizeSettings(s);
 }
 function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -823,12 +855,35 @@ function setDefaultRest(secs) {
   syncSettingsUI();
 }
 
+function setAutoBackup(freq) {
+  settings.autoBackup = AUTO_BACKUP_INTERVALS[freq] ? freq : 'off';
+  saveSettings();
+  syncSettingsUI();
+}
+
+/* Best-effort: only runs while the app is open, so a schedule is "due on next
+   open" rather than a true background timer. Skips silently if there's
+   nothing worth backing up yet. */
+function checkAutoBackup() {
+  var interval = AUTO_BACKUP_INTERVALS[settings.autoBackup];
+  if (!interval) return;
+  if (Date.now() - settings.lastAutoBackup < interval) return;
+  if (workouts.length === 0 && plans.length === 0) return;
+  exportData();
+  settings.lastAutoBackup = Date.now();
+  saveSettings();
+  showToast('Auto-backup saved — ' + backupFilename());
+}
+
 function syncSettingsUI() {
   document.querySelectorAll('#themeSeg button').forEach(function(b) {
     b.classList.toggle('active', b.getAttribute('data-theme-val') === settings.theme);
   });
   document.querySelectorAll('#restSeg button').forEach(function(b) {
     b.classList.toggle('active', parseInt(b.getAttribute('data-rest-val'), 10) === settings.defaultRest);
+  });
+  document.querySelectorAll('#autoBackupSeg button').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-autobackup-val') === settings.autoBackup);
   });
   var toggle = document.getElementById('keepAwakeToggle');
   if (toggle) {
@@ -1717,13 +1772,74 @@ function renderStats() {
   c.innerHTML = html;
 }
 
-/* ── Export ─────────────────────────────────────── */
+/* ── Export / Import (Backup) ──────────────────────── */
+function buildBackupPayload() {
+  return {
+    _gymlogBackup: true,
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    workouts: workouts,
+    exercises: knownExercises,
+    plans: plans,
+    settings: settings,
+    current: current
+  };
+}
+function backupFilename() {
+  return 'gymlog-' + new Date().toISOString().slice(0, 10) + '.json';
+}
 function exportData() {
-  var blob = new Blob([JSON.stringify(workouts, null, 2)], { type: 'application/json' });
+  var blob = new Blob([JSON.stringify(buildBackupPayload(), null, 2)], { type: 'application/json' });
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'gymlog-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.download = backupFilename();
   a.click();
+}
+
+function triggerImport() {
+  document.getElementById('importFileInput').click();
+}
+
+function handleImportFile(event) {
+  var input = event.target;
+  var file = input.files && input.files[0];
+  input.value = ''; /* allow re-selecting the same file later */
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    var data;
+    try { data = JSON.parse(reader.result); } catch (e) {
+      alert('Invalid backup file: ' + e.message);
+      return;
+    }
+    /* Older exports (pre-backup-bundle) were a bare workouts array */
+    if (Array.isArray(data)) data = { workouts: data };
+    if (!data || typeof data !== 'object' || !Array.isArray(data.workouts)) {
+      alert("This doesn't look like a GymLog backup file.");
+      return;
+    }
+    var exercises = Array.isArray(data.exercises) ? data.exercises : [];
+    var importedPlans = Array.isArray(data.plans) ? data.plans : [];
+    var msg = 'This will replace ' + data.workouts.length + ' workout' + (data.workouts.length !== 1 ? 's' : '') +
+      ', ' + exercises.length + ' exercise' + (exercises.length !== 1 ? 's' : '') +
+      ', ' + importedPlans.length + ' plan' + (importedPlans.length !== 1 ? 's' : '') + ' — continue?';
+    if (!confirm(msg)) return;
+
+    localStorage.setItem(DB_KEY, JSON.stringify(data.workouts));
+    localStorage.setItem(EXERCISES_KEY, JSON.stringify(exercises));
+    localStorage.setItem(PLANS_KEY, JSON.stringify(importedPlans));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalizeSettings(data.settings)));
+    if (data.current && typeof data.current === 'object') {
+      localStorage.setItem(CURRENT_KEY, JSON.stringify(data.current));
+    } else {
+      localStorage.removeItem(CURRENT_KEY);
+    }
+    location.reload();
+  };
+  reader.onerror = function() {
+    alert('Could not read the file.');
+  };
+  reader.readAsText(file);
 }
 
 /* ── Saved Plans ────────────────────────────────── */
@@ -1757,6 +1873,36 @@ function deletePlan(id) {
   plans = plans.filter(function(p) { return p.id !== id; });
   save();
   renderHomePlans();
+}
+
+/* Share a single saved plan as JSON — the same shape "Paste from AI" accepts,
+   so the recipient can paste or import it straight back into their own GymLog. */
+function sharePlan(id) {
+  var plan = plans.find(function(p) { return p.id === id; });
+  if (!plan) return;
+  var text = JSON.stringify(plan.data, null, 2);
+  var filename = (plan.name || 'gymlog-plan').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '.json';
+  var blob = new Blob([text], { type: 'application/json' });
+  var file = null;
+  try { file = new File([blob], filename, { type: 'application/json' }); } catch (e) { file = null; }
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: plan.name || 'GymLog Plan' }).catch(function(e) {
+      if (e && e.name !== 'AbortError') copyPlanText(text);
+    });
+  } else if (navigator.share) {
+    navigator.share({ title: plan.name || 'GymLog Plan', text: text }).catch(function() {});
+  } else {
+    copyPlanText(text);
+  }
+}
+function copyPlanText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(function() { showToast('Plan copied to clipboard!'); })
+      .catch(function() { showToast('Share not supported on this browser'); });
+  } else {
+    showToast('Share not supported on this browser');
+  }
 }
 
 function loadPlan(id) {
@@ -1863,6 +2009,7 @@ function renderHomePlans() {
       (meta ? '<div class="plan-meta">' + meta + '</div>' : '') + '</div>' +
       '<div class="plan-actions">' +
       '<button class="btn btn-primary btn-sm" onclick="loadPlan(' + p.id + ')">Load</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="sharePlan(' + p.id + ')">Share</button>' +
       '<button class="btn btn-ghost btn-sm" style="border-color:var(--danger);color:var(--danger)" onclick="deletePlan(' + p.id + ')">&#128465;</button>' +
       '</div></div>';
   }).join('');
@@ -2101,6 +2248,9 @@ if (current) {
 
 renderActive();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function() {});
+
+/* Give the recovery toast above room to show first before an auto-backup toast can fire */
+setTimeout(checkAutoBackup, current ? 5000 : 1500);
 </script>
 </body>
 </html>
