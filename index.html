@@ -573,11 +573,10 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <div class="settings-row">
 <div>
 <div class="settings-label">Backup</div>
-<div class="settings-desc">Export saves everything to a JSON file. Share sends it to another app (AirDrop, Drive, email). Import replaces all current data with a backup file.</div>
+<div class="settings-desc">Export saves everything to a JSON file. Import replaces all current data with a backup file.</div>
 </div>
 <div class="settings-control" style="gap:8px">
 <button class="btn btn-ghost btn-sm" onclick="exportData()">Export</button>
-<button class="btn btn-ghost btn-sm" onclick="shareBackup()">Share</button>
 <button class="btn btn-ghost btn-sm" onclick="triggerImport()">Import</button>
 </div>
 </div>
@@ -1773,7 +1772,7 @@ function renderStats() {
   c.innerHTML = html;
 }
 
-/* ── Export / Share / Import (Backup) ──────────────── */
+/* ── Export / Import (Backup) ──────────────────────── */
 function buildBackupPayload() {
   return {
     _gymlogBackup: true,
@@ -1795,20 +1794,6 @@ function exportData() {
   a.href = URL.createObjectURL(blob);
   a.download = backupFilename();
   a.click();
-}
-
-function shareBackup() {
-  var blob = new Blob([JSON.stringify(buildBackupPayload(), null, 2)], { type: 'application/json' });
-  var file = null;
-  try { file = new File([blob], backupFilename(), { type: 'application/json' }); } catch (e) { file = null; }
-  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
-    navigator.share({ files: [file], title: 'GymLog Backup' }).catch(function(e) {
-      if (e && e.name !== 'AbortError') exportData();
-    });
-  } else {
-    /* No Web Share (files) support in this browser — fall back to a normal download */
-    exportData();
-  }
 }
 
 function triggerImport() {
@@ -1888,6 +1873,36 @@ function deletePlan(id) {
   plans = plans.filter(function(p) { return p.id !== id; });
   save();
   renderHomePlans();
+}
+
+/* Share a single saved plan as JSON — the same shape "Paste from AI" accepts,
+   so the recipient can paste or import it straight back into their own GymLog. */
+function sharePlan(id) {
+  var plan = plans.find(function(p) { return p.id === id; });
+  if (!plan) return;
+  var text = JSON.stringify(plan.data, null, 2);
+  var filename = (plan.name || 'gymlog-plan').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '.json';
+  var blob = new Blob([text], { type: 'application/json' });
+  var file = null;
+  try { file = new File([blob], filename, { type: 'application/json' }); } catch (e) { file = null; }
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: plan.name || 'GymLog Plan' }).catch(function(e) {
+      if (e && e.name !== 'AbortError') copyPlanText(text);
+    });
+  } else if (navigator.share) {
+    navigator.share({ title: plan.name || 'GymLog Plan', text: text }).catch(function() {});
+  } else {
+    copyPlanText(text);
+  }
+}
+function copyPlanText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(function() { showToast('Plan copied to clipboard!'); })
+      .catch(function() { showToast('Share not supported on this browser'); });
+  } else {
+    showToast('Share not supported on this browser');
+  }
 }
 
 function loadPlan(id) {
@@ -1994,6 +2009,7 @@ function renderHomePlans() {
       (meta ? '<div class="plan-meta">' + meta + '</div>' : '') + '</div>' +
       '<div class="plan-actions">' +
       '<button class="btn btn-primary btn-sm" onclick="loadPlan(' + p.id + ')">Load</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="sharePlan(' + p.id + ')">Share</button>' +
       '<button class="btn btn-ghost btn-sm" style="border-color:var(--danger);color:var(--danger)" onclick="deletePlan(' + p.id + ')">&#128465;</button>' +
       '</div></div>';
   }).join('');
