@@ -573,14 +573,29 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <div class="settings-row">
 <div>
 <div class="settings-label">Backup</div>
-<div class="settings-desc">Export saves everything to a JSON file. Import replaces all current data with a backup file.</div>
+<div class="settings-desc">Export saves everything to a JSON file. Share sends it to another app (AirDrop, Drive, email). Import replaces all current data with a backup file.</div>
 </div>
 <div class="settings-control" style="gap:8px">
 <button class="btn btn-ghost btn-sm" onclick="exportData()">Export</button>
+<button class="btn btn-ghost btn-sm" onclick="shareBackup()">Share</button>
 <button class="btn btn-ghost btn-sm" onclick="triggerImport()">Import</button>
 </div>
 </div>
 <input type="file" id="importFileInput" accept="application/json,.json" style="display:none" onchange="handleImportFile(event)">
+<div class="settings-row">
+<div>
+<div class="settings-label">Auto-backup</div>
+<div class="settings-desc">Downloads a backup automatically on this schedule when you open the app.</div>
+</div>
+<div class="settings-control">
+<div class="theme-seg" id="autoBackupSeg">
+<button type="button" data-autobackup-val="off" onclick="setAutoBackup('off')">Off</button>
+<button type="button" data-autobackup-val="daily" onclick="setAutoBackup('daily')">Daily</button>
+<button type="button" data-autobackup-val="weekly" onclick="setAutoBackup('weekly')">Weekly</button>
+<button type="button" data-autobackup-val="monthly" onclick="setAutoBackup('monthly')">Monthly</button>
+</div>
+</div>
+</div>
 <div style="display:flex;gap:8px;margin-top:18px">
 <button class="btn btn-ghost" style="flex:1" onclick="closeSettings()">Done</button>
 </div>
@@ -749,6 +764,7 @@ var current = null;
 try { current = _savedCurrent ? JSON.parse(_savedCurrent) : null; } catch(e) { current = null; }
 
 /* Settings (new gymlog_settings key; independent of save()) */
+var AUTO_BACKUP_INTERVALS = { daily: 864e5, weekly: 6048e5, monthly: 2592e6 };
 var settings = loadSettings();
 var wakeLock = null;
 
@@ -782,7 +798,9 @@ function normalizeSettings(s) {
   return {
     theme: s.theme === 'light' ? 'light' : 'dark',
     keepAwake: s.keepAwake === true,
-    defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90
+    defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90,
+    autoBackup: AUTO_BACKUP_INTERVALS[s.autoBackup] ? s.autoBackup : 'off',
+    lastAutoBackup: typeof s.lastAutoBackup === 'number' ? s.lastAutoBackup : 0
   };
 }
 function loadSettings() {
@@ -838,12 +856,35 @@ function setDefaultRest(secs) {
   syncSettingsUI();
 }
 
+function setAutoBackup(freq) {
+  settings.autoBackup = AUTO_BACKUP_INTERVALS[freq] ? freq : 'off';
+  saveSettings();
+  syncSettingsUI();
+}
+
+/* Best-effort: only runs while the app is open, so a schedule is "due on next
+   open" rather than a true background timer. Skips silently if there's
+   nothing worth backing up yet. */
+function checkAutoBackup() {
+  var interval = AUTO_BACKUP_INTERVALS[settings.autoBackup];
+  if (!interval) return;
+  if (Date.now() - settings.lastAutoBackup < interval) return;
+  if (workouts.length === 0 && plans.length === 0) return;
+  exportData();
+  settings.lastAutoBackup = Date.now();
+  saveSettings();
+  showToast('Auto-backup saved — ' + backupFilename());
+}
+
 function syncSettingsUI() {
   document.querySelectorAll('#themeSeg button').forEach(function(b) {
     b.classList.toggle('active', b.getAttribute('data-theme-val') === settings.theme);
   });
   document.querySelectorAll('#restSeg button').forEach(function(b) {
     b.classList.toggle('active', parseInt(b.getAttribute('data-rest-val'), 10) === settings.defaultRest);
+  });
+  document.querySelectorAll('#autoBackupSeg button').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-autobackup-val') === settings.autoBackup);
   });
   var toggle = document.getElementById('keepAwakeToggle');
   if (toggle) {
@@ -1732,9 +1773,9 @@ function renderStats() {
   c.innerHTML = html;
 }
 
-/* ── Export / Import (Backup) ──────────────────────── */
-function exportData() {
-  var payload = {
+/* ── Export / Share / Import (Backup) ──────────────── */
+function buildBackupPayload() {
+  return {
     _gymlogBackup: true,
     version: 1,
     exportedAt: new Date().toISOString(),
@@ -1744,11 +1785,30 @@ function exportData() {
     settings: settings,
     current: current
   };
-  var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+}
+function backupFilename() {
+  return 'gymlog-' + new Date().toISOString().slice(0, 10) + '.json';
+}
+function exportData() {
+  var blob = new Blob([JSON.stringify(buildBackupPayload(), null, 2)], { type: 'application/json' });
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'gymlog-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.download = backupFilename();
   a.click();
+}
+
+function shareBackup() {
+  var blob = new Blob([JSON.stringify(buildBackupPayload(), null, 2)], { type: 'application/json' });
+  var file = null;
+  try { file = new File([blob], backupFilename(), { type: 'application/json' }); } catch (e) { file = null; }
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: 'GymLog Backup' }).catch(function(e) {
+      if (e && e.name !== 'AbortError') exportData();
+    });
+  } else {
+    /* No Web Share (files) support in this browser — fall back to a normal download */
+    exportData();
+  }
 }
 
 function triggerImport() {
@@ -2172,6 +2232,9 @@ if (current) {
 
 renderActive();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function() {});
+
+/* Give the recovery toast above room to show first before an auto-backup toast can fire */
+setTimeout(checkAutoBackup, current ? 5000 : 1500);
 </script>
 </body>
 </html>
