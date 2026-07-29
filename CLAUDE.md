@@ -73,6 +73,11 @@ changes. PR reviews should check the bump is present.
   "startTime": 1234567890,
   "duration": 3600,
   "warmups": [{ "name": "", "sets": [{ "weight": "", "reps": "", "rpe": "", "_done": false }], "_rest": 90, "_notes": "" }],
-  "exercises": [{ "name": "", "sets": [...], "_rest": 90, "_notes": "" }]
+  "exercises": [{ "name": "", "sets": [...], "_rest": 90, "_notes": "", "_swappedFrom": "" }]
 }
 ```
+
+`_swappedFrom` is set when the exercise was substituted via the alternatives
+sheet (⇄) and holds the original name so the swap can be undone. It is absent
+on exercises that were never swapped, and swaps are deliberately **not** synced
+back into the saved plan — a substitution is a today decision, not a plan edit.
