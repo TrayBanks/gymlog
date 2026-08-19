@@ -207,6 +207,36 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .day-last-done{font-size:.7rem;white-space:nowrap;flex-shrink:0;color:var(--muted);text-align:right}
 .day-last-done.done{color:var(--primary);font-weight:600}
 
+/* ── Exercise alternatives (swap) ────────────────── */
+.alt-btn{display:inline-flex;align-items:center;gap:3px;background:rgba(108,99,255,.1);color:var(--primary);border:1px solid rgba(108,99,255,.25);border-radius:6px;font-size:.68rem;font-weight:700;letter-spacing:.3px;padding:0 8px;height:28px;cursor:pointer;flex-shrink:0}
+.alt-btn:active{background:rgba(108,99,255,.22)}
+.swapped-from{font-size:.7rem;color:var(--muted);margin:-4px 0 8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;line-height:1.4}
+.swapped-from strong{color:var(--text);font-weight:600}
+.swapped-from button{background:none;border:none;color:var(--primary);font-size:.7rem;font-weight:700;cursor:pointer;padding:2px 4px;text-decoration:underline;min-height:24px}
+.alt-current{font-size:.85rem;color:var(--muted);margin:-8px 0 14px;line-height:1.45}
+.alt-current strong{color:var(--text)}
+.alt-sub-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:7px}
+.alt-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+.alt-chip{background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:20px;font-size:.78rem;font-weight:600;padding:8px 13px;min-height:36px;cursor:pointer;transition:all .15s}
+.alt-chip.active{background:var(--primary);border-color:var(--primary);color:#fff}
+.alt-note{font-size:.75rem;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin-bottom:10px;line-height:1.45}
+.alt-list{list-style:none;padding:0;margin:0 0 14px;max-height:40dvh;overflow-y:auto;overscroll-behavior:contain}
+.alt-item{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:11px 14px;margin-bottom:7px;min-height:52px;cursor:pointer;transition:all .15s}
+.alt-item:active{border-color:var(--primary);background:rgba(108,99,255,.08)}
+.alt-item .alt-name{font-weight:600;font-size:.88rem;line-height:1.3}
+.alt-item .alt-eq{font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
+.alt-item.revert{border-color:rgba(245,158,11,.45);background:var(--warmup-bg)}
+.alt-item.revert .alt-eq{color:var(--warmup)}
+/* Equipment chips stacked under their label in Settings */
+.settings-row.stacked{display:block}
+.settings-row.stacked .alt-chips{margin:10px 0 2px}
+/* The sheet opens over gym mode too — above the overlay, and keeping gym's dark palette */
+#altModal{z-index:120}
+#altModal.on-gym .modal{--bg:#0b0f18;--surface:#141a26;--card:#1c2431;--text:#f1f5f9;--muted:#8a93a6;--border:#2a3444;--warmup-bg:rgba(245,158,11,.1);background:var(--bg);color:var(--text)}
+/* Swap button inside gym mode */
+.gym-alt-btn{background:none;border:1px solid #2a2a2a;color:#666;border-radius:8px;padding:7px 14px;font-size:.72rem;font-weight:700;letter-spacing:.5px;cursor:pointer;min-height:34px;margin:2px 0 16px}
+.gym-alt-btn:active{color:#8B85FF;border-color:#444}
+
 /* ═══════════════════════════════════════════
    GYM MODE — full-screen focus overlay
    ═══════════════════════════════════════════ */
@@ -570,6 +600,11 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 </div>
 </div>
 </div>
+<div class="settings-row stacked">
+<div class="settings-label">Equipment</div>
+<div class="settings-desc">Pre-selected filter when you tap &#8644; Alt to swap an exercise.</div>
+<div class="alt-chips" id="equipSeg"></div>
+</div>
 <div style="display:flex;gap:8px;margin-top:18px">
 <button class="btn btn-ghost" style="flex:1" onclick="closeSettings()">Done</button>
 </div>
@@ -612,6 +647,26 @@ Supports a single workout <em>or</em> an array of multiple days. Optional <code 
 <button class="btn btn-ghost" style="flex:1" onclick="backToPasteInput()">Back</button>
 <button class="btn btn-ghost" onclick="closePasteModal()">Cancel</button>
 </div>
+</div>
+</div>
+</div>
+
+<!-- EXERCISE ALTERNATIVES MODAL -->
+<div id="altModal" class="modal-overlay">
+<div class="modal">
+<h2>&#8644; Swap Exercise</h2>
+<div class="alt-current" id="altCurrent"></div>
+<div class="alt-sub-label">Equipment</div>
+<div class="alt-chips" id="altChips"></div>
+<div class="alt-note" id="altNote" style="display:none"></div>
+<ul class="alt-list" id="altList"></ul>
+<div class="form-group">
+<label>Or type your own</label>
+<input id="altCustom" placeholder="e.g. Machine Chest Press" list="exerciseList" autocomplete="off">
+</div>
+<div style="display:flex;gap:8px">
+<button class="btn btn-primary" style="flex:1" onclick="applyCustomAlt()">Use This</button>
+<button class="btn btn-ghost" onclick="closeAltModal()">Cancel</button>
 </div>
 </div>
 </div>
@@ -670,6 +725,20 @@ var EXERCISES_KEY = 'gymlog_exercises';
 var PLANS_KEY = 'gymlog_plans';
 var SETTINGS_KEY = 'gymlog_settings';
 var CURRENT_KEY = 'gymlog_current';
+
+/* Equipment filter for exercise alternatives — declared up here because
+   loadSettings() validates against it at parse time. */
+var EQUIP_MODES = [
+  ['all', 'All'],
+  ['bodyweight', 'Calisthenics'],
+  ['dumbbell', 'Dumbbells'],
+  ['barbell', 'Barbell'],
+  ['machine', 'Machine'],
+  ['cable', 'Cable'],
+  ['band', 'Bands']
+];
+var EQUIP_LABELS = {};
+EQUIP_MODES.forEach(function(m) { EQUIP_LABELS[m[0]] = m[1]; });
 
 var workouts = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
 var currentPlanId = null;   /* id of the plan that loaded the current workout */
@@ -772,7 +841,8 @@ function loadSettings() {
   return {
     theme: s.theme === 'light' ? 'light' : 'dark',
     keepAwake: s.keepAwake === true,
-    defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90
+    defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90,
+    equipment: EQUIP_MODES.some(function(m) { return m[0] === s.equipment; }) ? s.equipment : 'all'
   };
 }
 function saveSettings() {
@@ -830,6 +900,8 @@ function syncSettingsUI() {
   document.querySelectorAll('#restSeg button').forEach(function(b) {
     b.classList.toggle('active', parseInt(b.getAttribute('data-rest-val'), 10) === settings.defaultRest);
   });
+  var equipSeg = document.getElementById('equipSeg');
+  if (equipSeg) equipSeg.innerHTML = equipChipsHtml();
   var toggle = document.getElementById('keepAwakeToggle');
   if (toggle) {
     toggle.checked = settings.keepAwake;
@@ -986,17 +1058,26 @@ function syncCurrentToPlan() {
   if (!plan) return;
   var dayData = Array.isArray(plan.data) ? plan.data[currentPlanDayIdx] : plan.data;
   if (!dayData) return;
-  dayData.warmups = (current.warmups || []).map(function(ex) {
-    return { name: ex.name, sets: ex.sets.length,
-      reps: ex.sets[0] ? ex.sets[0].reps || '' : '',
-      rest: ex._rest != null ? ex._rest : 0, notes: ex._notes || '' };
-  });
-  dayData.exercises = (current.exercises || []).map(function(ex) {
-    return { name: ex.name, sets: ex.sets.length,
-      reps: ex.sets[0] ? ex.sets[0].reps || '' : '',
-      rest: ex._rest != null ? ex._rest : null, notes: ex._notes || '' };
-  });
+  dayData.warmups = planEntriesFrom(current.warmups, 0);
+  dayData.exercises = planEntriesFrom(current.exercises, null);
   save();
+}
+
+/* Live workout blocks → plan entries. A swapped exercise reports the plan's
+   original name (a swap is for today, not a plan edit), and a swap that split
+   one block in two collapses back to the single entry it came from. */
+function planEntriesFrom(list, fallbackRest) {
+  var seen = {}, out = [];
+  (list || []).forEach(function(ex) {
+    var name = ex._swappedFrom || ex.name;
+    var key = String(name).toLowerCase();
+    if (ex._swappedFrom && seen[key]) return;
+    seen[key] = true;
+    out.push({ name: name, sets: ex.sets.length,
+      reps: ex.sets[0] ? ex.sets[0].reps || '' : '',
+      rest: ex._rest != null ? ex._rest : fallbackRest, notes: ex._notes || '' });
+  });
+  return out;
 }
 
 function addExercise() {
@@ -1231,7 +1312,12 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
     (ex._notes ? '<span style="display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px">' + esc(ex._notes) + '</span>' : '') +
     '</h4>' +
     vidBtn +
+    '<button class="alt-btn" onclick="openAltModal(\'' + sec + '\',' + ei + ')" title="Swap for an alternative">&#8644; Alt</button>' +
     '<button class="remove-set" onclick="removeExercise(\'' + sec + '\',' + ei + ')" title="Remove">&#10005;</button></div>';
+  if (ex._swappedFrom) {
+    html += '<div class="swapped-from">&#8644; swapped from <strong>' + esc(ex._swappedFrom) + '</strong>' +
+      '<button onclick="quickRevert(\'' + sec + '\',' + ei + ')">Undo</button></div>';
+  }
   /* Last-perf only for working sets — warmups don't log weight */
   var lp = isWarmup ? null : lastPerformance(ex.name);
   if (lp) {
@@ -1285,13 +1371,517 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
 }
 
 /* ══════════════════════════════════════════════════
+   EXERCISE ALTERNATIVES
+   Every exercise gets a "⇄ Alt" button that swaps it
+   for another movement in the same family, filtered by
+   whatever equipment is actually available (calisthenics,
+   dumbbells only, …). Catalog is local — works offline.
+   ══════════════════════════════════════════════════ */
+
+/* Movement family a swap must stay inside */
+var PATTERN_LABELS = {
+  'push-h': 'Horizontal Press', 'push-i': 'Incline Press', 'push-v': 'Overhead Press',
+  'fly': 'Chest Isolation', 'pull-v': 'Vertical Pull', 'pull-h': 'Row',
+  'delt-lat': 'Side Delt', 'delt-rear': 'Rear Delt', 'traps': 'Traps',
+  'biceps': 'Biceps', 'triceps': 'Triceps', 'core': 'Core',
+  'squat': 'Squat', 'hinge': 'Hip Hinge', 'lunge': 'Single-Leg',
+  'glute': 'Glute Bridge / Thrust', 'ham': 'Hamstring Curl', 'quad': 'Quad Isolation',
+  'calf': 'Calves', 'mob-hip': 'Hip Mobility', 'mob-tspine': 'T-Spine Mobility',
+  'mob-shoulder': 'Shoulder Mobility', 'act-cuff': 'Rotator Cuff',
+  'act-scap': 'Scapular Activation', 'act-glute': 'Glute Activation'
+};
+
+/* [name, equipment, pattern] */
+var ALT_CATALOG = [
+  /* Horizontal press */
+  ['Barbell Bench Press','barbell','push-h'],
+  ['Close-Grip Bench Press','barbell','push-h'],
+  ['Dumbbell Bench Press','dumbbell','push-h'],
+  ['Dumbbell Floor Press','dumbbell','push-h'],
+  ['Push-Up','bodyweight','push-h'],
+  ['Feet-Elevated Push-Up','bodyweight','push-h'],
+  ['Chest Dip','bodyweight','push-h'],
+  ['Machine Chest Press','machine','push-h'],
+  ['Smith Machine Bench Press','machine','push-h'],
+  ['Standing Cable Chest Press','cable','push-h'],
+  ['Band Chest Press','band','push-h'],
+  /* Incline press */
+  ['Incline Barbell Bench Press','barbell','push-i'],
+  ['Reverse-Grip Incline Bench Press','barbell','push-i'],
+  ['Incline DB Press (45°)','dumbbell','push-i'],
+  ['Low-Incline DB Press (30°)','dumbbell','push-i'],
+  ['Decline Push-Up (feet elevated)','bodyweight','push-i'],
+  ['Incline Machine Press','machine','push-i'],
+  ['Low-to-High Cable Press','cable','push-i'],
+  ['Band Incline Press','band','push-i'],
+  /* Overhead press */
+  ['Standing Barbell Overhead Press','barbell','push-v'],
+  ['Seated Barbell Press','barbell','push-v'],
+  ['Landmine Press','barbell','push-v'],
+  ['Seated DB Shoulder Press','dumbbell','push-v'],
+  ['Standing DB Push Press','dumbbell','push-v'],
+  ['Arnold Press','dumbbell','push-v'],
+  ['Pike Push-Up','bodyweight','push-v'],
+  ['Wall Handstand Push-Up','bodyweight','push-v'],
+  ['Machine Shoulder Press','machine','push-v'],
+  ['Smith Machine Overhead Press','machine','push-v'],
+  ['Single-Arm Cable Overhead Press','cable','push-v'],
+  ['Band Overhead Press','band','push-v'],
+  /* Chest isolation */
+  ['Cable Fly — Low to High','cable','fly'],
+  ['Cable Crossover','cable','fly'],
+  ['Pec Deck Machine','machine','fly'],
+  ['Flat DB Fly','dumbbell','fly'],
+  ['Incline DB Fly','dumbbell','fly'],
+  ['Band Chest Fly','band','fly'],
+  ['Ring Fly','bodyweight','fly'],
+  /* Vertical pull */
+  ['Pull-Up','bodyweight','pull-v'],
+  ['Chin-Up','bodyweight','pull-v'],
+  ['Weighted Pull-Up','bodyweight','pull-v'],
+  ['Band-Assisted Pull-Up','band','pull-v'],
+  ['Kneeling Band Lat Pulldown','band','pull-v'],
+  ['Lat Pulldown','machine','pull-v'],
+  ['Neutral-Grip Lat Pulldown','machine','pull-v'],
+  ['Assisted Pull-Up Machine','machine','pull-v'],
+  ['Straight-Arm Cable Pulldown','cable','pull-v'],
+  ['Single-Arm Cable Pulldown','cable','pull-v'],
+  ['DB Pullover','dumbbell','pull-v'],
+  /* Row */
+  ['Barbell Pendlay Row','barbell','pull-h'],
+  ['Bent-Over Barbell Row','barbell','pull-h'],
+  ['T-Bar Row','barbell','pull-h'],
+  ['Single-Arm DB Row','dumbbell','pull-h'],
+  ['Chest-Supported DB Row','dumbbell','pull-h'],
+  ['Inverted Row (bar or table)','bodyweight','pull-h'],
+  ['Ring Row','bodyweight','pull-h'],
+  ['Seated Cable Row','cable','pull-h'],
+  ['Wide-Grip Seated Cable Row','cable','pull-h'],
+  ['Chest-Supported Machine Row','machine','pull-h'],
+  ['Hammer Strength Row','machine','pull-h'],
+  ['Seated Band Row','band','pull-h'],
+  /* Side delt */
+  ['Cable Lateral Raise','cable','delt-lat'],
+  ['DB Lateral Raise','dumbbell','delt-lat'],
+  ['Leaning DB Lateral Raise','dumbbell','delt-lat'],
+  ['Machine Lateral Raise','machine','delt-lat'],
+  ['Band Lateral Raise','band','delt-lat'],
+  ['Plank Shoulder Tap','bodyweight','delt-lat'],
+  /* Rear delt */
+  ['Cable Face Pull','cable','delt-rear'],
+  ['Band Face Pull','band','delt-rear'],
+  ['Band Pull-Apart','band','delt-rear'],
+  ['Reverse Pec Deck','machine','delt-rear'],
+  ['Bent-Over DB Reverse Fly','dumbbell','delt-rear'],
+  ['Prone Incline DB Rear Delt Raise','dumbbell','delt-rear'],
+  ['Wide-Grip Barbell High Row','barbell','delt-rear'],
+  ['Prone Y-T-W Raise','bodyweight','delt-rear'],
+  /* Traps */
+  ['Barbell Shrug','barbell','traps'],
+  ['DB Shrug','dumbbell','traps'],
+  ['Cable Shrug','cable','traps'],
+  ['Machine Shrug','machine','traps'],
+  ['Band Shrug','band','traps'],
+  ['Scapular Shrug from Hang','bodyweight','traps'],
+  /* Biceps */
+  ['EZ Bar Curl','barbell','biceps'],
+  ['Barbell Curl','barbell','biceps'],
+  ['DB Curl','dumbbell','biceps'],
+  ['Hammer Curl','dumbbell','biceps'],
+  ['Incline DB Curl','dumbbell','biceps'],
+  ['Cable Curl','cable','biceps'],
+  ['Rope Hammer Curl','cable','biceps'],
+  ['Machine Preacher Curl','machine','biceps'],
+  ['Band Curl','band','biceps'],
+  ['Chin-Up (biceps focus)','bodyweight','biceps'],
+  ['Bodyweight Bar Curl','bodyweight','biceps'],
+  /* Triceps */
+  ['Rope Tricep Pushdown','cable','triceps'],
+  ['Straight-Bar Pushdown','cable','triceps'],
+  ['Overhead Cable Extension','cable','triceps'],
+  ['Skull Crusher','barbell','triceps'],
+  ['Close-Grip Bench Press (triceps)','barbell','triceps'],
+  ['DB Overhead Extension','dumbbell','triceps'],
+  ['DB Tricep Kickback','dumbbell','triceps'],
+  ['Machine Tricep Extension','machine','triceps'],
+  ['Bench Dip','bodyweight','triceps'],
+  ['Parallel Bar Dip','bodyweight','triceps'],
+  ['Diamond Push-Up','bodyweight','triceps'],
+  ['Band Pushdown','band','triceps'],
+  /* Squat */
+  ['Barbell Back Squat','barbell','squat'],
+  ['Barbell Front Squat','barbell','squat'],
+  ['Goblet Squat (DB or KB)','dumbbell','squat'],
+  ['DB Squat','dumbbell','squat'],
+  ['Hack Squat Machine','machine','squat'],
+  ['Leg Press','machine','squat'],
+  ['Smith Machine Squat','machine','squat'],
+  ['Belt Squat','machine','squat'],
+  ['Bodyweight Squat','bodyweight','squat'],
+  ['Assisted Pistol Squat','bodyweight','squat'],
+  ['Jump Squat','bodyweight','squat'],
+  ['Banded Goblet Squat','band','squat'],
+  /* Hip hinge */
+  ['Conventional Deadlift','barbell','hinge'],
+  ['Romanian Deadlift (RDL)','barbell','hinge'],
+  ['Sumo Deadlift','barbell','hinge'],
+  ['Barbell Good Morning','barbell','hinge'],
+  ['DB Romanian Deadlift','dumbbell','hinge'],
+  ['Single-Leg DB RDL','dumbbell','hinge'],
+  ['Kettlebell / DB Swing','dumbbell','hinge'],
+  ['45° Back Extension','machine','hinge'],
+  ['Seated Machine Hip Hinge','machine','hinge'],
+  ['Cable Pull-Through','cable','hinge'],
+  ['Band Pull-Through','band','hinge'],
+  ['Single-Leg Bodyweight RDL','bodyweight','hinge'],
+  /* Single-leg */
+  ['Bulgarian Split Squat (DB)','dumbbell','lunge'],
+  ['DB Walking Lunge','dumbbell','lunge'],
+  ['DB Step-Up','dumbbell','lunge'],
+  ['Barbell Split Squat','barbell','lunge'],
+  ['Barbell Walking Lunge','barbell','lunge'],
+  ['Smith Machine Split Squat','machine','lunge'],
+  ['Single-Leg Leg Press','machine','lunge'],
+  ['Cable Reverse Lunge','cable','lunge'],
+  ['Banded Split Squat','band','lunge'],
+  ['Bodyweight Reverse Lunge','bodyweight','lunge'],
+  ['Bodyweight Split Squat','bodyweight','lunge'],
+  ['Jumping Lunge','bodyweight','lunge'],
+  /* Glute bridge / thrust */
+  ['Barbell Hip Thrust','barbell','glute'],
+  ['DB Hip Thrust','dumbbell','glute'],
+  ['Machine Hip Thrust','machine','glute'],
+  ['Glute Kickback Machine','machine','glute'],
+  ['Cable Glute Kickback','cable','glute'],
+  ['Banded Glute Kickback','band','glute'],
+  ['Banded Glute Bridge','band','glute'],
+  ['Glute Bridge','bodyweight','glute'],
+  ['Single-Leg Glute Bridge','bodyweight','glute'],
+  ['Frog Pump','bodyweight','glute'],
+  /* Hamstring curl */
+  ['Lying Leg Curl','machine','ham'],
+  ['Seated Leg Curl','machine','ham'],
+  ['Nordic Hamstring Curl','bodyweight','ham'],
+  ['Sliding Leg Curl','bodyweight','ham'],
+  ['Glute-Ham Raise','bodyweight','ham'],
+  ['DB Leg Curl','dumbbell','ham'],
+  ['Cable Leg Curl','cable','ham'],
+  ['Band Leg Curl','band','ham'],
+  /* Quad isolation */
+  ['Leg Extension Machine','machine','quad'],
+  ['Cable Knee Extension','cable','quad'],
+  ['Band Leg Extension','band','quad'],
+  ['Sissy Squat','bodyweight','quad'],
+  ['Wall Sit','bodyweight','quad'],
+  ['Reverse Nordic Curl','bodyweight','quad'],
+  ['DB Sissy Squat','dumbbell','quad'],
+  /* Calves */
+  ['Standing Calf Raise (Machine)','machine','calf'],
+  ['Seated Calf Raise (Machine)','machine','calf'],
+  ['Leg Press Calf Raise','machine','calf'],
+  ['Barbell Calf Raise','barbell','calf'],
+  ['DB Single-Leg Calf Raise','dumbbell','calf'],
+  ['Bodyweight Calf Raise','bodyweight','calf'],
+  ['Single-Leg Bodyweight Calf Raise','bodyweight','calf'],
+  ['Band Calf Press','band','calf'],
+  /* Core */
+  ['Plank','bodyweight','core'],
+  ['Hanging Leg Raise','bodyweight','core'],
+  ['Hollow Body Hold','bodyweight','core'],
+  ['Dead Bug','bodyweight','core'],
+  ['Ab Wheel Rollout','bodyweight','core'],
+  ['Cable Crunch','cable','core'],
+  ['Cable Pallof Press','cable','core'],
+  ['Band Pallof Press','band','core'],
+  ['Machine Ab Crunch','machine','core'],
+  ['Weighted Russian Twist','dumbbell','core'],
+  ['DB Suitcase Carry','dumbbell','core'],
+  ['Barbell Rollout','barbell','core'],
+  /* Hip mobility */
+  ['90/90 Hip Flexor Stretch','bodyweight','mob-hip'],
+  ['Kneeling Hip Flexor Stretch','bodyweight','mob-hip'],
+  ['Couch Stretch','bodyweight','mob-hip'],
+  ['Standing Hip Flexor Stretch (wall)','bodyweight','mob-hip'],
+  ['World\'s Greatest Stretch','bodyweight','mob-hip'],
+  ['90/90 Hip Rotation','bodyweight','mob-hip'],
+  ['Seated Figure-4 Stretch','bodyweight','mob-hip'],
+  ['Leg Swing (Front-Back + Lateral)','bodyweight','mob-hip'],
+  ['Banded Hip Distraction','band','mob-hip'],
+  /* T-spine mobility */
+  ['Thoracic Extension over Foam Roller','bodyweight','mob-tspine'],
+  ['Cat-Cow (Quadruped)','bodyweight','mob-tspine'],
+  ['Seated Thoracic Rotation','bodyweight','mob-tspine'],
+  ['Open Book (side-lying)','bodyweight','mob-tspine'],
+  ['Quadruped Thread the Needle','bodyweight','mob-tspine'],
+  ['Wall Angel','bodyweight','mob-tspine'],
+  /* Shoulder mobility */
+  ['Wall Pec Stretch','bodyweight','mob-shoulder'],
+  ['Doorway Pec Stretch','bodyweight','mob-shoulder'],
+  ['Dead Hang','bodyweight','mob-shoulder'],
+  ['Sleeper Stretch','bodyweight','mob-shoulder'],
+  ['Arm Circles','bodyweight','mob-shoulder'],
+  ['Band Shoulder Dislocate','band','mob-shoulder'],
+  ['Overhead Cable Lat Stretch','cable','mob-shoulder'],
+  /* Rotator cuff */
+  ['Band Rotator Cuff Circuit','band','act-cuff'],
+  ['Band External Rotation','band','act-cuff'],
+  ['Cable External Rotation','cable','act-cuff'],
+  ['Side-Lying DB External Rotation','dumbbell','act-cuff'],
+  ['Wall Ball Circles','bodyweight','act-cuff'],
+  /* Scapular activation */
+  ['Scapular Pull-Up','bodyweight','act-scap'],
+  ['Scapular Push-Up','bodyweight','act-scap'],
+  ['Prone Y-T-W (scapular)','bodyweight','act-scap'],
+  ['Band Pull-Apart (scapular)','band','act-scap'],
+  ['Light Band Face Pull','band','act-scap'],
+  ['Light Cable Face Pull','cable','act-scap'],
+  ['Prone DB Y-Raise','dumbbell','act-scap'],
+  /* Glute activation */
+  ['Banded Lateral Walk','band','act-glute'],
+  ['Banded Monster Walk','band','act-glute'],
+  ['Banded Clamshell','band','act-glute'],
+  ['Standing Banded Glute Squeeze','band','act-glute'],
+  ['Glute Bridge Hold (Bodyweight)','bodyweight','act-glute'],
+  ['Fire Hydrant','bodyweight','act-glute'],
+  ['Bird Dog','bodyweight','act-glute'],
+  ['Light Cable Kickback','cable','act-glute']
+];
+
+/* Name → pattern, first match wins. Order matters: mobility drills and
+   isolation work are checked before the compound keyword they contain
+   ("Hip Flexor Lunge Stretch" is not a lunge; "Leg Curl" is not a curl). */
+var PATTERN_RULES = [
+  [/(hip flexor|90\/90|couch stretch|figure ?4|pigeon|leg swing|hip rotation|world s greatest|hip distraction|lunge stretch|adductor stretch)/, 'mob-hip'],
+  [/(cat cow|thoracic|t spine|open book|thread the needle|wall angel|foam roll)/, 'mob-tspine'],
+  [/(pec stretch|doorway|dead hang|sleeper stretch|dislocate|arm circle|lat stretch|shoulder stretch)/, 'mob-shoulder'],
+  [/(rotator cuff|external rotation|internal rotation)/, 'act-cuff'],
+  [/(scapular|serratus|y t w|prone y|prone t)/, 'act-scap'],
+  [/(lateral walk|monster walk|clamshell|fire hydrant|bird dog|glute squeeze|glute activation)/, 'act-glute'],
+  [/(leg curl|hamstring curl|nordic|glute ham|sliding curl|slider curl)/, 'ham'],
+  [/(leg extension|knee extension|sissy|wall sit)/, 'quad'],
+  [/(calf|heel raise)/, 'calf'],
+  [/curl/, 'biceps'],
+  [/(tricep|push ?down|skull|overhead extension|close grip bench|dip)/, 'triceps'],
+  [/(face pull|pull ?apart|rear delt|reverse fly|rear fly|reverse pec)/, 'delt-rear'],
+  [/(lateral raise|side raise|lateral delt|side delt)/, 'delt-lat'],
+  [/shrug/, 'traps'],
+  [/(fly|crossover|pec deck)/, 'fly'],
+  [/(pull ?up|chin ?up|pull ?down|lat pull|pullover)/, 'pull-v'],
+  [/row/, 'pull-h'],
+  [/(split squat|lunge|step ?up|bulgarian)/, 'lunge'],
+  [/(hip thrust|glute bridge|kickback|frog pump|hip extension)/, 'glute'],
+  [/(squat|leg press|hack)/, 'squat'],
+  [/(deadlift|rdl|romanian|good morning|hinge|swing|pull ?through|back extension|hyperextension)/, 'hinge'],
+  [/(overhead press|shoulder press|military|ohp|pike push|handstand|arnold|landmine)/, 'push-v'],
+  [/push ?up/, 'push-h'],
+  [/incline/, 'push-i'],
+  [/(bench|chest press|floor press|chest)/, 'push-h'],
+  [/(plank|crunch|sit ?up|hollow|dead bug|leg raise|ab wheel|rollout|pallof|russian twist|carry|core|oblique)/, 'core']
+];
+
+/* Lowercase, strip punctuation (so "Push-Up" and "push up" match the same rule) */
+function altNorm(s) {
+  return String(s || '').toLowerCase().replace(/[^a-z0-9/]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+var _altByName = {};
+ALT_CATALOG.forEach(function(e) { _altByName[altNorm(e[0])] = e; });
+
+function altPatternFor(name) {
+  var n = altNorm(name);
+  if (!n) return null;
+  if (_altByName[n]) return _altByName[n][2];
+  for (var i = 0; i < PATTERN_RULES.length; i++) {
+    if (PATTERN_RULES[i][0].test(n)) return PATTERN_RULES[i][1];
+  }
+  return null;
+}
+
+/* Same-pattern options, minus the exercise itself. `all` backs the
+   "no kit for this movement" fallback so a filter never dead-ends. */
+function altOptionsFor(name, equip) {
+  var pat = altPatternFor(name);
+  if (!pat) return { pattern: null, list: [], all: [] };
+  var cur = altNorm(name);
+  var all = ALT_CATALOG.filter(function(e) { return e[2] === pat && altNorm(e[0]) !== cur; });
+  var list = equip === 'all' ? all : all.filter(function(e) { return e[1] === equip; });
+  return { pattern: pat, list: list, all: all };
+}
+
+var _altTarget = null;   /* {sec, ei, fromGym} — what the open sheet is swapping */
+var _altShown = [];      /* names currently listed, indexed by the row buttons */
+
+function equipChipsHtml() {
+  return EQUIP_MODES.map(function(m) {
+    return '<button type="button" class="alt-chip' + (settings.equipment === m[0] ? ' active' : '') +
+      '" onclick="setAltEquip(\'' + m[0] + '\')">' + m[1] + '</button>';
+  }).join('');
+}
+
+/* Quick setting — shared by the sheet's chips and the Settings row */
+function setAltEquip(eq) {
+  settings.equipment = eq;
+  saveSettings();
+  var seg = document.getElementById('equipSeg');
+  if (seg) seg.innerHTML = equipChipsHtml();
+  if (_altTarget) renderAltModal();
+}
+
+function altTargetEx() {
+  if (!_altTarget || !current) return null;
+  var arr = _altTarget.sec === 'warmup' ? current.warmups : current.exercises;
+  return (arr && arr[_altTarget.ei]) || null;
+}
+
+function openAltModal(sec, ei, fromGym) {
+  if (!current) return;
+  _altTarget = { sec: sec, ei: ei, fromGym: !!fromGym };
+  if (!altTargetEx()) { _altTarget = null; return; }
+  var ov = document.getElementById('altModal');
+  ov.classList.toggle('on-gym', !!fromGym);
+  document.getElementById('altCustom').value = '';
+  document.getElementById('exerciseList').innerHTML =
+    knownExercises.map(function(e) { return '<option value="' + esc(e) + '">'; }).join('');
+  renderAltModal();
+  ov.classList.add('open');
+}
+
+function closeAltModal() {
+  var ov = document.getElementById('altModal');
+  ov.classList.remove('open');
+  ov.classList.remove('on-gym');
+  _altTarget = null;
+  _altShown = [];
+}
+
+function renderAltModal() {
+  var ex = altTargetEx();
+  if (!ex) { closeAltModal(); return; }
+  var eq = settings.equipment;
+  var res = altOptionsFor(ex.name, eq);
+  var patLabel = res.pattern ? PATTERN_LABELS[res.pattern] : null;
+
+  document.getElementById('altCurrent').innerHTML =
+    'Swapping <strong>' + esc(ex.name) + '</strong>' + (patLabel ? ' &middot; ' + esc(patLabel) : '');
+  document.getElementById('altChips').innerHTML = equipChipsHtml();
+
+  var list = res.list;
+  var note = document.getElementById('altNote');
+  if (!res.pattern) {
+    note.style.display = '';
+    note.textContent = 'No built-in match for this movement — type a replacement below.';
+  } else if (list.length === 0 && res.all.length > 0) {
+    list = res.all;   /* filter came up empty — better to show everything than nothing */
+    note.style.display = '';
+    note.textContent = 'No ' + EQUIP_LABELS[eq] + ' option for ' + patLabel + ' — showing all.';
+  } else {
+    note.style.display = 'none';
+  }
+
+  /* The original gets its own "revert" row below — don't list it twice */
+  if (ex._swappedFrom) {
+    var origKey = altNorm(ex._swappedFrom);
+    list = list.filter(function(e) { return altNorm(e[0]) !== origKey; });
+  }
+
+  _altShown = list.map(function(e) { return e[0]; });
+  var html = list.map(function(e, i) {
+    return '<li><button class="alt-item" onclick="applyAltIdx(' + i + ')">' +
+      '<span class="alt-name">' + esc(e[0]) + '</span>' +
+      '<span class="alt-eq">' + esc(EQUIP_LABELS[e[1]] || e[1]) + '</span></button></li>';
+  }).join('');
+  if (ex._swappedFrom) {
+    html = '<li><button class="alt-item revert" onclick="revertAlt()">' +
+      '<span class="alt-name">&#8617; ' + esc(ex._swappedFrom) + '</span>' +
+      '<span class="alt-eq">Original</span></button></li>' + html;
+  }
+  document.getElementById('altList').innerHTML = html;
+}
+
+function applyAltIdx(i) { applyAlt(_altShown[i]); }
+
+function applyCustomAlt() {
+  var v = document.getElementById('altCustom').value.trim();
+  if (!v) { showToast('Type an exercise name first'); return; }
+  applyAlt(v);
+}
+
+function revertAlt() {
+  var ex = altTargetEx();
+  if (ex && ex._swappedFrom) applyAlt(ex._swappedFrom);
+}
+
+/* Undo straight from the exercise block, no sheet needed */
+function quickRevert(sec, ei) {
+  if (!current) return;
+  _altTarget = { sec: sec, ei: ei, fromGym: false };
+  var ex = altTargetEx();
+  if (ex && ex._swappedFrom) applyAlt(ex._swappedFrom);
+  else _altTarget = null;
+}
+
+/* Swap the target exercise for `newName`.
+   Nothing logged yet → rename in place (planned weight/RPE cleared, since a
+   different implement means a different load; empty weights re-fill from the
+   new exercise's own history on the next render).
+   Some sets already logged → split: the finished sets keep the old name so
+   history stays honest, and the remaining sets move to a new block right
+   below under the new name.
+   The swap is session-only — the saved plan is left untouched. */
+function applyAlt(newName) {
+  var ex = altTargetEx();
+  newName = String(newName || '').trim();
+  if (!ex || !newName) return;
+  var oldName = ex.name;
+  if (altNorm(newName) === altNorm(oldName)) { closeAltModal(); return; }
+
+  var arr = _altTarget.sec === 'warmup' ? current.warmups : current.exercises;
+  var fromGym = _altTarget.fromGym;
+  var sets = ex.sets || [];
+  var done = sets.filter(function(s) { return s && s._done; });
+  var open = sets.filter(function(s) { return !(s && s._done); });
+  var origin = ex._swappedFrom || oldName;             /* the plan's original name */
+  var backToOrigin = !!ex._swappedFrom && altNorm(newName) === altNorm(origin);
+  var clear = function(s) { s.weight = ''; s.rpe = ''; };
+  var split = false;
+
+  if (done.length === 0) {
+    ex.name = newName;
+    if (backToOrigin) delete ex._swappedFrom; else ex._swappedFrom = origin;
+    open.forEach(clear);
+  } else {
+    ex.sets = done;
+    var fresh = open.length ? open
+      : [{ weight: '', reps: (sets[sets.length - 1] || {}).reps || '', rpe: '' }];
+    fresh.forEach(clear);
+    var newEx = { name: newName, sets: fresh };
+    if (ex._rest != null) newEx._rest = ex._rest;
+    if (ex._notes) newEx._notes = ex._notes;
+    if (!backToOrigin) newEx._swappedFrom = origin;
+    arr.splice(_altTarget.ei + 1, 0, newEx);
+    split = true;
+  }
+
+  if (!knownExercises.includes(newName)) knownExercises.push(newName);
+  save();
+  closeAltModal();
+  renderActive();
+  if (document.getElementById('gymOverlay').classList.contains('open')) {
+    /* The split inserted a block right after the one on screen — follow it */
+    if (split && fromGym) { gymExIdx += 1; gymSetIdx = 0; }
+    gymRenderContent();
+  }
+  showToast((backToOrigin ? 'Back to ' : 'Swapped to ') + newName + ' ✔️');
+}
+
+/* ══════════════════════════════════════════════════
    GYM MODE
    ══════════════════════════════════════════════════ */
 function gymGetExercises() {
   if (!current) return [];
   var all = [];
-  (current.warmups || []).forEach(function(ex) { all.push({ ex: ex, isWarmup: true }); });
-  (current.exercises || []).forEach(function(ex) { all.push({ ex: ex, isWarmup: false }); });
+  (current.warmups || []).forEach(function(ex, i) { all.push({ ex: ex, isWarmup: true, sec: 'warmup', ei: i }); });
+  (current.exercises || []).forEach(function(ex, i) { all.push({ ex: ex, isWarmup: false, sec: 'exercise', ei: i }); });
   return all;
 }
 
@@ -1408,7 +1998,9 @@ function gymRenderContent() {
     '<div class="gym-section-badge ' + badgeClass + '">' + badgeLabel + '</div>' +
     '<div class="gym-ex-name">' + esc(ex.name) +
     (ex._notes ? '<div class="gym-ex-notes">' + esc(ex._notes) + '</div>' : '') +
-    '</div>';
+    (ex._swappedFrom ? '<div class="gym-ex-notes">&#8644; swapped from ' + esc(ex._swappedFrom) + '</div>' : '') +
+    '</div>' +
+    '<button class="gym-alt-btn" onclick="openAltModal(\'' + item.sec + '\',' + item.ei + ',true)">&#8644; SWAP EXERCISE</button>';
 
   if (item.isWarmup) {
     html +=
