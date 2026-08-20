@@ -92,6 +92,11 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .exercise-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--border)}
 .exercise-row .name{font-weight:600;font-size:.9rem}
 .exercise-row .sets{color:var(--muted);font-size:.82rem;text-align:right;flex-shrink:0;margin-left:8px}
+/* Workout-card variant: set detail (weight x reps @ RPE) is too long to sit
+   beside the name on a phone, so it drops onto its own line beneath it. */
+.exercise-row.stacked{display:block}
+.exercise-row.stacked .name{display:block;margin-bottom:3px}
+.exercise-row.stacked .sets{display:block;text-align:left;margin-left:0;line-height:1.5;font-variant-numeric:tabular-nums}
 
 /* Form */
 .form-group{margin-bottom:14px}
@@ -197,6 +202,25 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .plan-item .plan-meta{font-size:.73rem;color:var(--muted);margin-top:2px}
 .plan-item .plan-actions{display:flex;gap:6px;flex-shrink:0}
 .modal-divider{border:none;border-top:1px solid var(--border);margin:14px 0}
+/* Per-exercise history sheet — every past session of one movement, with the
+   weight, reps and RPE recorded for each set. */
+.ex-history-link{background:none;border:none;padding:0;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer;min-width:0;max-width:100%;overflow-wrap:anywhere;border-bottom:1px dotted var(--border)}
+.ex-history-link:active{opacity:.6}
+.ex-hist-title-row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:6px}
+.ex-hist-title-row h2{margin:0;min-width:0;overflow-wrap:anywhere}
+.ex-hist-sub{font-size:.75rem;color:var(--muted);margin-bottom:12px}
+.ex-hist-session{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.ex-hist-session.latest{border-color:rgba(108,99,255,.45);background:rgba(108,99,255,.06)}
+.ex-hist-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:6px}
+.ex-hist-head .d{font-weight:700;font-size:.85rem}
+.ex-hist-head .d em{font-style:normal;font-size:.6rem;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--primary);margin-left:6px}
+.ex-hist-head .m{font-size:.7rem;color:var(--muted);flex-shrink:0}
+.ex-hist-set{display:flex;gap:10px;align-items:baseline;padding:3px 0;font-variant-numeric:tabular-nums}
+.ex-hist-set .n{width:18px;flex-shrink:0;font-size:.7rem;color:var(--muted);text-align:right}
+.ex-hist-set .v{font-size:.88rem;font-weight:600}
+.ex-hist-set.skipped .v{text-decoration:line-through;opacity:.5;font-weight:400}
+.ex-hist-empty{font-size:.85rem;color:var(--muted);line-height:1.5;padding:8px 0 4px}
+.ex-hist-note{font-size:.7rem;color:var(--muted);line-height:1.5;margin-top:4px}
 /* Warmup-only set row (done/not-done, no inputs) */
 .set-row.warmup-row{grid-template-columns:28px 1fr 32px}
 .warmup-set-label{font-size:.82rem;color:var(--muted);padding:0 4px;line-height:1}
@@ -240,6 +264,21 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .gym-weight-adj{display:flex;gap:10px;justify-content:center;margin:-8px 0 22px;flex-wrap:wrap}
 .gym-weight-adj button{background:rgba(108,99,255,.12);color:#8B85FF;border:1px solid rgba(108,99,255,.3);border-radius:10px;font-size:.85rem;font-weight:700;padding:9px 16px;cursor:pointer;min-height:42px;min-width:52px}
 .gym-weight-adj button:active{background:rgba(108,99,255,.3)}
+/* Per-set logging controls (gym mode). Weight, reps and RPE are all captured
+   here — gym mode used to only adjust weight, so reps stayed at whatever the
+   plan said and RPE was never recorded at all. Gym overlay is always dark, so
+   the palette is hardcoded like the rest of it rather than themed. */
+.gym-log-group{width:100%;max-width:340px;margin-bottom:16px}
+.gym-log-caption{font-size:.6rem;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#4d4d59;text-align:center;margin-bottom:7px}
+.gym-log-group .gym-weight-adj{margin:0}
+.gym-stepper{display:flex;gap:10px;justify-content:center;align-items:stretch}
+.gym-stepper button{background:rgba(108,99,255,.12);color:#8B85FF;border:1px solid rgba(108,99,255,.3);border-radius:10px;font-size:1.15rem;font-weight:700;cursor:pointer;min-height:46px;min-width:58px;padding:0}
+.gym-stepper button:active{background:rgba(108,99,255,.3)}
+.gym-stepper .gym-stepper-val{flex:1;max-width:120px;color:#fff;font-size:1.1rem;font-weight:800;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.14)}
+.gym-rpe-chips{display:flex;gap:6px;justify-content:center}
+.gym-rpe-chips button{flex:1 1 0;min-width:0;background:rgba(255,255,255,.04);color:#8a8a95;border:1px solid rgba(255,255,255,.1);border-radius:10px;font-size:.95rem;font-weight:700;font-variant-numeric:tabular-nums;cursor:pointer;min-height:46px;padding:0}
+.gym-rpe-chips button:active{background:rgba(108,99,255,.35)}
+.gym-rpe-chips button.active{background:rgba(108,99,255,.28);color:#fff;border-color:#6C63FF}
 /* Warmup exercise demo image (gym mode) */
 .gym-warmup-img-wrap{width:100%;max-width:320px;margin:4px auto 20px;border-radius:12px;overflow:hidden;background:#0a1628;min-height:140px;display:flex;align-items:center;justify-content:center;position:relative}
 .gym-warmup-img{width:100%;height:auto;max-height:220px;object-fit:cover;display:block;opacity:0;transition:opacity .4s}
@@ -528,6 +567,18 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 </div>
 </div>
 
+<!-- PER-EXERCISE HISTORY MODAL -->
+<div id="exHistoryModal" class="modal-overlay" onclick="if(event.target===this)closeExerciseHistory()">
+<div class="modal">
+<div class="ex-hist-title-row">
+<h2 id="exHistoryTitle">Exercise</h2>
+<button class="remove-set" onclick="closeExerciseHistory()" title="Close">&#10005;</button>
+</div>
+<div id="exHistoryBody"></div>
+<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="closeExerciseHistory()">Close</button>
+</div>
+</div>
+
 <!-- SETTINGS MODAL -->
 <div id="settingsModal" class="modal-overlay">
 <div class="modal">
@@ -672,6 +723,10 @@ var SETTINGS_KEY = 'gymlog_settings';
 var CURRENT_KEY = 'gymlog_current';
 
 var workouts = JSON.parse(localStorage.getItem(DB_KEY) || '[]');
+/* Repair/normalize previously logged sets before anything reads them.
+   Persist DB_KEY directly — plans and knownExercises are still
+   undefined at this point, so a full save() would clobber them. */
+if (normalizeHistory()) localStorage.setItem(DB_KEY, JSON.stringify(workouts));
 var currentPlanId = null;   /* id of the plan that loaded the current workout */
 var currentPlanDayIdx = null; /* day index within that plan (null for single-day) */
 var knownExercises = JSON.parse(localStorage.getItem(EXERCISES_KEY) ||
@@ -1170,6 +1225,210 @@ function gymPromptCustomWeight() {
   if (!isNaN(n)) gymAdjustWeight(n);
 }
 
+/* The set currently on screen in gym mode, or null if there isn't one. */
+function gymCurrentSet() {
+  var exs = gymGetExercises();
+  if (gymExIdx >= exs.length) return null;
+  var sets = exs[gymExIdx].ex.sets || [];
+  return sets[gymSetIdx] || null;
+}
+
+/* Reps actually performed. Starts from the planned number so a set that went
+   as written needs no taps, and +/- records the reality when it didn't. */
+function gymAdjustReps(delta) {
+  var set = gymCurrentSet();
+  if (!set) return;
+  var n = parseInt(set.reps, 10);
+  if (isNaN(n)) n = 0;
+  n += delta;
+  if (n < 0) n = 0;
+  set.reps = n ? String(n) : '';
+  delete set._est;
+  saveCurrent();
+  gymRenderContent();
+}
+
+function gymPromptReps() {
+  var set = gymCurrentSet();
+  if (!set) return;
+  var val = prompt('Reps completed:', set.reps || '');
+  if (val === null) return;
+  val = String(val).trim();
+  if (val !== '' && isNaN(parseFloat(val))) return;
+  set.reps = val;
+  delete set._est;
+  saveCurrent();
+  gymRenderContent();
+}
+
+/* Tapping the chip already selected clears the RPE, so a mis-tap is undoable
+   without leaving gym mode. */
+function gymSetRpe(v) {
+  var set = gymCurrentSet();
+  if (!set) return;
+  set.rpe = (String(set.rpe) === String(v)) ? '' : String(v);
+  saveCurrent();
+  gymRenderContent();
+}
+
+/* ── Exercise history ───────────────────── */
+/* Normalize every stored set to the full {weight, reps, rpe} shape and
+   repair weights that were shown but never recorded.
+
+   Two historical gaps produced blank fields: gym mode had no reps or RPE
+   entry at all, and the normal-mode weight box seeded itself from the last
+   session for display only — an untouched input fires no change event, so
+   the set was logged blank even though the app displayed a number. For
+   completed working sets missing a weight, carry forward the weight that
+   exercise last recorded (which is exactly what the box displayed) and flag
+   it `_est` so the UI can mark it inferred rather than measured. Reps are
+   never invented: a blank reps field was blank on screen too.
+
+   Idempotent — after one pass there is nothing left to fill. Returns true
+   when it changed something, so the caller knows whether to persist. */
+function normalizeHistory() {
+  if (!Array.isArray(workouts) || workouts.length === 0) return false;
+  var changed = false;
+  /* exercise key -> the weights its previous session actually recorded, by set
+     index. Index-matched because that is what the old prefill did
+     (lp.sets[si].weight), so this reconstructs the number the box displayed. */
+  var prevWeights = {};
+  /* workouts is newest-first (unshift on finish), so walk it backwards to move
+     through time in order and let the carry-forward flow forwards. */
+  for (var wi = workouts.length - 1; wi >= 0; wi--) {
+    var w = workouts[wi];
+    if (!w) continue;
+    var warm = w.warmups || [];
+    /* Warmups first so a name appearing in both sections leaves the working-set
+       weights in prevWeights — the same preference lastPerformance applies. */
+    var all = warm.concat(w.exercises || []);
+    for (var ei = 0; ei < all.length; ei++) {
+      var ex = all[ei];
+      if (!ex || !ex.name || !Array.isArray(ex.sets)) continue;
+      var key = String(ex.name).trim().toLowerCase();
+      var isWarmup = warm.indexOf(ex) !== -1;
+      var prior = prevWeights[key] || [];
+      var recorded = [];
+      for (var si = 0; si < ex.sets.length; si++) {
+        var set = ex.sets[si];
+        if (!set || typeof set !== 'object') { set = ex.sets[si] = {}; changed = true; }
+        if (set.weight === undefined || set.weight === null) { set.weight = ''; changed = true; }
+        if (set.reps === undefined || set.reps === null) { set.reps = ''; changed = true; }
+        if (set.rpe === undefined || set.rpe === null) { set.rpe = ''; changed = true; }
+        /* Warmups never logged weight, so a blank there is expected, not lost */
+        if (!isWarmup && set._done && set.weight === '' && prior[si]) {
+          set.weight = prior[si];
+          set._est = true;
+          changed = true;
+        }
+        /* Only genuinely recorded weights seed the next session: an estimate was
+           blank in storage at the time, so the box it fed showed nothing. */
+        recorded[si] = (set.weight !== '' && !set._est) ? set.weight : '';
+      }
+      prevWeights[key] = recorded;
+    }
+  }
+  return changed;
+}
+
+/* Canonical rendering of one logged set, used everywhere a set is
+   summarized so weight, reps and RPE never drift apart between views.
+   `compact` tightens it for dense reference lines ("135x8 @8" vs
+   "135 x 8 @8"). Missing weight/reps show as an em dash, RPE is omitted
+   when absent, and a carried-forward weight (see normalizeHistory) is
+   prefixed with ~ so an inferred number never reads as a logged one. */
+function formatSet(s, compact) {
+  s = s || {};
+  var w = (s.weight === 0 || s.weight) ? s.weight : '\u2014';
+  var r = (s.reps === 0 || s.reps) ? s.reps : '\u2014';
+  var txt = (s._est ? '~' : '') + w + (compact ? '\u00d7' : ' \u00d7 ') + r;
+  if (s.rpe === 0 || s.rpe) txt += ' @' + s.rpe;
+  return txt;
+}
+
+/* Every recorded occurrence of one exercise across all saved workouts,
+   newest first. Powers the per-exercise history sheet. */
+function exerciseHistory(name) {
+  var key = String(name || '').trim().toLowerCase();
+  if (!key) return [];
+  var out = [];
+  workouts.forEach(function(w) {
+    if (!w) return;
+    (w.exercises || []).concat(w.warmups || []).forEach(function(e) {
+      if (!e || !e.name || !e.sets || e.sets.length === 0) return;
+      if (String(e.name).trim().toLowerCase() !== key) return;
+      out.push({ date: w.date, sets: e.sets, notes: e._notes || '' });
+    });
+  });
+  return out;
+}
+
+/* esc() is textContent-based, so it escapes < > & but leaves quotes alone —
+   safe in a text node, not inside an attribute value. */
+function escAttr(str) { return esc(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+
+/* Exercise name rendered as a tap target for its own history. The name rides
+   in a data attribute rather than the handler string so quotes in it can't
+   break out of the onclick. */
+function exHistoryLink(name, cls) {
+  return '<button type="button" class="ex-history-link' + (cls ? ' ' + cls : '') +
+    '" data-ex="' + escAttr(name) + '" onclick="openExerciseHistory(this.dataset.ex)"' +
+    ' title="Past sets for this exercise">' + esc(name) + '</button>';
+}
+
+var EX_HIST_CAP = 15;   /* sessions rendered in the sheet before it truncates */
+
+function openExerciseHistory(name) {
+  var sessions = exerciseHistory(name);
+  document.getElementById('exHistoryTitle').textContent = name || 'Exercise';
+  var body = document.getElementById('exHistoryBody');
+
+  if (sessions.length === 0) {
+    body.innerHTML = '<div class="ex-hist-empty">Nothing logged for this one yet. ' +
+      'Finish a workout with it and every set\u2019s weight, reps and RPE lands here.</div>';
+  } else {
+    var anyEst = false;
+    var now = new Date();
+    var cards = sessions.slice(0, EX_HIST_CAP).map(function(sess, idx) {
+      var d = new Date(sess.date);
+      var dateStr = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      if (d.getFullYear() !== now.getFullYear()) dateStr += ', ' + d.getFullYear();
+      var vol = sess.sets.reduce(function(v, st) {
+        return v + (parseFloat(st.weight) || 0) * (parseFloat(st.reps) || 0);
+      }, 0);
+      var rows = sess.sets.map(function(st, si) {
+        if (st._est) anyEst = true;
+        /* Legacy sets carry no _done at all — only an explicit false means skipped */
+        var cls = 'ex-hist-set' + (st._done === false ? ' skipped' : '');
+        return '<div class="' + cls + '"><span class="n">' + (si + 1) + '</span>' +
+          '<span class="v">' + esc(formatSet(st)) + '</span></div>';
+      }).join('');
+      return '<div class="ex-hist-session' + (idx === 0 ? ' latest' : '') + '">' +
+        '<div class="ex-hist-head">' +
+        '<span class="d">' + esc(dateStr) + (idx === 0 ? ' <em>latest</em>' : '') + '</span>' +
+        '<span class="m">' + sess.sets.length + (sess.sets.length === 1 ? ' set' : ' sets') +
+        (vol ? ' \u00b7 ' + Math.round(vol).toLocaleString() + ' lbs' : '') + '</span>' +
+        '</div>' + rows + '</div>';
+    }).join('');
+
+    var sub = '<div class="ex-hist-sub">' +
+      (sessions.length === 1 ? '1 recorded session' : sessions.length + ' recorded sessions') +
+      (sessions.length > EX_HIST_CAP ? ' \u00b7 showing the latest ' + EX_HIST_CAP : '') +
+      '</div>';
+    var note = anyEst
+      ? '<div class="ex-hist-note">~ carried over from the session before it. ' +
+        'The app displayed that weight but an older bug never saved it, so it is an ' +
+        'estimate rather than a logged number.</div>'
+      : '';
+    body.innerHTML = sub + cards + note;
+  }
+  document.getElementById('exHistoryModal').classList.add('open');
+}
+
+function closeExerciseHistory() {
+  document.getElementById('exHistoryModal').classList.remove('open');
+}
+
 /* ── Last-performance memory (F5) ─────────────────────
    Scan completed `workouts` (newest-first) for the most recent
    exercise whose name matches `name` (case-insensitive, trimmed)
@@ -1207,10 +1466,7 @@ function lastPerformance(name) {
    every set neutral (no misleading "not completed" stigma). */
 function lastPerfSetsHtml(lp, struckStyle) {
   return lp.sets.map(function(s) {
-    s = s || {};
-    var w = (s.weight === 0 || s.weight) ? s.weight : '—';
-    var r = (s.reps === 0 || s.reps) ? s.reps : '—';
-    var txt = esc(w + '×' + r);
+    var txt = esc(formatSet(s, true));
     if (lp.hasDone && !s._done) {
       return '<span style="' + struckStyle + '">' + txt + '</span>';
     }
@@ -1220,6 +1476,7 @@ function lastPerfSetsHtml(lp, struckStyle) {
 
 function renderExerciseBlock(ex, ei, section, isWarmup) {
   var sec = isWarmup ? 'warmup' : 'exercise';
+  var seeded = false;   /* set true when render writes a carried-over weight back into a set */
   var blockClass = 'exercise-block' + (isWarmup ? ' warmup-block' : '');
   var vidBtn = isWarmup
     ? '<a href="https://www.youtube.com/results?search_query=' + encodeURIComponent(ex.name + ' exercise how to') + '" target="_blank" rel="noopener" class="warmup-vid-btn" title="How-to video">&#9654;</a>'
@@ -1227,7 +1484,7 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
   var html =
     '<div class="' + blockClass + '">' +
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:10px">' +
-    '<h4 style="font-size:.92rem;flex:1;min-width:0">' + esc(ex.name) +
+    '<h4 style="font-size:.92rem;flex:1;min-width:0">' + exHistoryLink(ex.name) +
     (ex._notes ? '<span style="display:block;font-size:.72rem;font-weight:400;color:var(--muted);margin-top:2px">' + esc(ex._notes) + '</span>' : '') +
     '</h4>' +
     vidBtn +
@@ -1247,7 +1504,7 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
   ex.sets.forEach(function(s, si) {
     var checkBtn = '<button class="set-check' + (s._done ? ' done' : '') + '" onclick="toggleSetDone(\'' + sec + '\',' + ei + ',' + si + ')" title="' + (s._done ? 'Mark not done' : 'Mark done') + '" aria-pressed="' + (s._done ? 'true' : 'false') + '">' + (s._done ? '&#10003;' : (si + 1)) + '</button>';
     if (s._done) {
-      var summary = isWarmup ? 'Done' : ((s.weight || '—') + ' × ' + (s.reps || '—') + (s.rpe ? ' @' + s.rpe : ''));
+      var summary = isWarmup ? 'Done' : formatSet(s);
       html +=
         '<div class="set-row done' + (isWarmup ? ' warmup-row' : '') + '">' +
         checkBtn +
@@ -1262,14 +1519,22 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
         '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
         '</div>';
     } else {
-      var lpWeight = lp && lp.sets[si] ? lp.sets[si].weight || '' : '';
-      var weightVal = (s.weight !== undefined && s.weight !== '') ? s.weight : lpWeight;
+      /* Seed a blank weight from last time INTO the set, not just into the
+         input box. A prefilled input the user never touches fires no event,
+         so a display-only seed was being logged as a blank weight. */
+      if ((s.weight === undefined || s.weight === '') && lp && lp.sets[si] && lp.sets[si].weight) {
+        s.weight = lp.sets[si].weight;
+        seeded = true;
+      }
+      /* oninput, not onchange: change only fires on blur, and a re-render
+         (marking a set done, the rest popup opening) discards an input that
+         still has focus, silently dropping what was typed. */
       html +=
         '<div class="set-row">' +
         checkBtn +
-        '<input type="number" inputmode="decimal" value="' + (weightVal || '') + '" placeholder="lbs" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'weight\',this.value)">' +
-        '<input type="number" inputmode="numeric" value="' + (s.reps || '') + '" placeholder="reps" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'reps\',this.value)">' +
-        '<input type="number" inputmode="decimal" value="' + (s.rpe || '') + '" placeholder="RPE" min="1" max="10" onchange="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'rpe\',this.value)">' +
+        '<input type="number" inputmode="decimal" value="' + (s.weight || '') + '" placeholder="lbs" oninput="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'weight\',this.value)">' +
+        '<input type="number" inputmode="numeric" value="' + (s.reps || '') + '" placeholder="reps" oninput="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'reps\',this.value)">' +
+        '<input type="number" inputmode="decimal" value="' + (s.rpe || '') + '" placeholder="RPE" min="1" max="10" step="0.5" oninput="updateSet(\'' + sec + '\',' + ei + ',' + si + ',\'rpe\',this.value)">' +
         '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
         '</div>' +
         '<div class="weight-adj">' +
@@ -1281,6 +1546,7 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
     }
   });
   html += '<div class="exercise-actions"><button class="btn btn-ghost btn-sm" onclick="addSet(\'' + sec + '\',' + ei + ')">+ Set</button></div></div>';
+  if (seeded) saveCurrent();
   return html;
 }
 
@@ -1432,6 +1698,38 @@ function gymRenderContent() {
     }
   }
 
+  /* Weight / reps / RPE for the set on screen. Everything written here lands
+     on the set object itself, so it is what actually gets logged. Rendered
+     even once every set is ticked — the pips select which set to correct. */
+  if (!item.isWarmup) {
+    html +=
+      '<div class="gym-log-group">' +
+      '<div class="gym-log-caption">Weight</div>' +
+      '<div class="gym-weight-adj">' +
+      '<button onclick="gymAdjustWeight(5)">+5</button>' +
+      '<button onclick="gymAdjustWeight(10)">+10</button>' +
+      '<button onclick="gymAdjustWeight(15)">+15</button>' +
+      '<button onclick="gymPromptCustomWeight()">+?</button>' +
+      '</div></div>' +
+      '<div class="gym-log-group">' +
+      '<div class="gym-log-caption">Reps</div>' +
+      '<div class="gym-stepper">' +
+      '<button onclick="gymAdjustReps(-1)" aria-label="One rep fewer">&minus;</button>' +
+      '<button class="gym-stepper-val" onclick="gymPromptReps()" aria-label="Type reps">' +
+      esc(currentSet.reps || '\u2014') + '</button>' +
+      '<button onclick="gymAdjustReps(1)" aria-label="One rep more">+</button>' +
+      '</div></div>' +
+      '<div class="gym-log-group">' +
+      '<div class="gym-log-caption">RPE</div>' +
+      '<div class="gym-rpe-chips">' +
+      [5, 6, 7, 8, 9, 10].map(function(v) {
+        var on = String(currentSet.rpe) === String(v);
+        return '<button class="' + (on ? 'active' : '') + '" onclick="gymSetRpe(' + v + ')"' +
+          ' aria-pressed="' + (on ? 'true' : 'false') + '">' + v + '</button>';
+      }).join('') +
+      '</div></div>';
+  }
+
   if (allDone) {
     html += '<div class="gym-complete-msg">&#10003; All Sets Complete!</div>';
     if (gymExIdx < exs.length - 1) {
@@ -1440,15 +1738,6 @@ function gymRenderContent() {
       html += '<button class="gym-done-btn all-done" onclick="closeGymMode()">Workout Done &rarr;</button>';
     }
   } else {
-    if (!item.isWarmup) {
-      html +=
-        '<div class="gym-weight-adj">' +
-        '<button onclick="gymAdjustWeight(5)">+5</button>' +
-        '<button onclick="gymAdjustWeight(10)">+10</button>' +
-        '<button onclick="gymAdjustWeight(15)">+15</button>' +
-        '<button onclick="gymPromptCustomWeight()">+?</button>' +
-        '</div>';
-    }
     html += '<button class="gym-done-btn" onclick="gymMarkSetDone()">&#10003; &nbsp; SET DONE</button>';
   }
 
@@ -1645,8 +1934,8 @@ function renderHistory() {
       ? '<span style="background:rgba(108,99,255,.15);color:var(--primary);border-radius:6px;padding:2px 8px;font-size:.72rem;font-weight:700;margin-left:6px">&#9201; ' + formatDuration(w.duration) + '</span>'
       : '';
     var rows = allEx.map(function(e) {
-      var detail = e.sets.map(function(s) { return (s.weight || '—') + '×' + (s.reps || '—'); }).join(', ');
-      return '<div class="exercise-row"><span class="name">' + esc(e.name) + '</span><span class="sets">' + detail + '</span></div>';
+      var detail = e.sets.map(function(s) { return esc(formatSet(s, true)); }).join(', ');
+      return '<div class="exercise-row stacked">' + exHistoryLink(e.name, 'name') + '<span class="sets">' + detail + '</span></div>';
     }).join('');
     return '<div class="workout-card">' +
       '<div style="display:flex;justify-content:space-between;align-items:start">' +
@@ -1710,7 +1999,7 @@ function renderStats() {
   if (topEx.length) {
     html += '<div class="workout-card"><h3 style="margin-bottom:10px">Top Exercises</h3>';
     topEx.forEach(function(item) {
-      html += '<div class="exercise-row"><span class="name">' + esc(item[0]) + '</span><span class="sets">' + item[1] + 'x</span></div>';
+      html += '<div class="exercise-row">' + exHistoryLink(item[0], 'name') + '<span class="sets">' + item[1] + 'x</span></div>';
     });
     html += '</div>';
   }
