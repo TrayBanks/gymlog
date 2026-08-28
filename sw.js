@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gymlog-v27';
+const CACHE_NAME = 'gymlog-v32';
 const IMG_CACHE  = 'gymlog-exercise-images'; /* persisted across version bumps */
 const ASSETS = [
   './',
@@ -9,7 +9,6 @@ const ASSETS = [
   './icon-512.png',
   './icon-512-maskable.png'
 ];
-
 self.addEventListener('install', e => {
   e.waitUntil(
     caches.open(CACHE_NAME)
@@ -17,7 +16,6 @@ self.addEventListener('install', e => {
       .then(() => self.skipWaiting())
   );
 });
-
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
@@ -28,10 +26,20 @@ self.addEventListener('activate', e => {
     ).then(() => self.clients.claim())
   );
 });
-
+/* Tapping a rest/reminder notification focuses the app (or opens it) */
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const c of list) {
+        if ('focus' in c) return c.focus();
+      }
+      return clients.openWindow('./');
+    })
+  );
+});
 self.addEventListener('fetch', e => {
   const req = e.request;
-
   /* Cache-first strategy for exercise demo images (wger.de CDN) */
   if (/wger\.de.*\.(jpg|jpeg|png|gif|webp)/i.test(req.url)) {
     e.respondWith(
@@ -47,7 +55,6 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
-
   /* Network-first for the HTML shell (page navigations) so a fresh deploy
      shows up immediately when online; fall back to cache when offline. This
      avoids the "I deployed but still see the old version" PWA cache trap. */
@@ -66,7 +73,6 @@ self.addEventListener('fetch', e => {
     );
     return;
   }
-
   /* Everything else (manifest, icons, sw assets): cache-first for speed */
   e.respondWith(
     caches.match(req).then(cached => cached || fetch(req))

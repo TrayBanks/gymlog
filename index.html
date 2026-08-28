@@ -251,6 +251,19 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .alt-item .alt-eq{font-size:.66rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;flex-shrink:0}
 .alt-item.revert{border-color:rgba(245,158,11,.45);background:var(--warmup-bg)}
 .alt-item.revert .alt-eq{color:var(--warmup)}
+/* Muscle-group browser (ported from PR #19) */
+.alt-tap{flex:1;background:none;border:none;color:inherit;text-align:left;padding:0;cursor:pointer;font:inherit;min-width:0}
+.alt-meta{font-size:.72rem;color:var(--muted);margin-top:2px;line-height:1.35}
+.alt-group-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin:14px 0 7px}
+.alt-empty{font-size:.8rem;color:var(--muted);padding:6px 0 10px;line-height:1.5}
+.alt-link{background:none;border:none;color:var(--primary);font-size:.8rem;font-weight:600;padding:8px 0;cursor:pointer;display:block}
+.alt-vid{flex-shrink:0;color:var(--muted);text-decoration:none;font-size:.8rem;padding:6px 8px;border:1px solid var(--border);border-radius:8px;line-height:1}
+/* Inline demo thumbnails (wger.de, same cache as warmup demos) */
+.alt-thumb-wrap{position:relative;width:44px;height:44px;flex-shrink:0;border-radius:8px;overflow:hidden;background:var(--card);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:1.05rem}
+.alt-thumb{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .25s;background:#fff}
+.alt-thumb.loaded{opacity:1}
+#altBrowseModal{z-index:130}
+#altBrowseModal .alt-list{max-height:46dvh}
 /* Equipment chips stacked under their label in Settings */
 .settings-row.stacked{display:block}
 .settings-row.stacked .alt-chips{margin:10px 0 2px}
@@ -309,11 +322,16 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 .gym-rpe-chips button{flex:1 1 0;min-width:0;background:rgba(255,255,255,.04);color:#8a8a95;border:1px solid rgba(255,255,255,.1);border-radius:10px;font-size:.95rem;font-weight:700;font-variant-numeric:tabular-nums;cursor:pointer;min-height:46px;padding:0}
 .gym-rpe-chips button:active{background:rgba(108,99,255,.35)}
 .gym-rpe-chips button.active{background:rgba(108,99,255,.28);color:#fff;border-color:#6C63FF}
+.gym-reps-quick{margin-top:8px}
+.gym-reps-quick button{min-height:38px;font-size:.85rem}
 /* Warmup exercise demo image (gym mode) */
 .gym-warmup-img-wrap{width:100%;max-width:320px;margin:4px auto 20px;border-radius:12px;overflow:hidden;background:#0a1628;min-height:140px;display:flex;align-items:center;justify-content:center;position:relative}
 .gym-warmup-img{width:100%;height:auto;max-height:220px;object-fit:cover;display:block;opacity:0;transition:opacity .4s}
 .gym-warmup-img.loaded{opacity:1}
 .gym-warmup-img-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:2.2rem;opacity:.18}
+.gym-warmup-img-wrap.compact{max-width:230px;min-height:84px;margin:2px auto 14px}
+.gym-warmup-img-wrap.compact .gym-warmup-img{max-height:126px}
+.gym-warmup-img-wrap.compact .gym-warmup-img-placeholder{font-size:1.6rem}
 
 /* Main scrollable content */
 .gym-main{
@@ -558,6 +576,7 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
   <p>Ready to train?</p>
   <button class="btn btn-primary btn-lg start-btn" onclick="startWorkout()">&#9654; Start Workout</button>
   <p class="start-hint">or tap <strong>+</strong> below</p>
+  <button class="btn btn-ghost btn-sm" style="margin-top:20px" onclick="openAltBrowse('info')">&#8646; Exercise Alternatives</button>
 </div>
 </div>
 
@@ -589,6 +608,7 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <label>Exercise Name</label>
 <input id="exerciseName" placeholder="e.g. Bench Press" list="exerciseList" autocomplete="off">
 <datalist id="exerciseList"></datalist>
+<button class="alt-link" onclick="openAltBrowse('fill')">&#8646; Browse alternatives by muscle group</button>
 </div>
 <div style="display:flex;gap:8px">
 <button class="btn btn-primary" style="flex:1" onclick="addExercise()">Add</button>
@@ -639,6 +659,30 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 </div>
 <div class="settings-row">
 <div>
+<div class="settings-label">Rest-end sound</div>
+<div class="settings-desc">Short beep when the rest timer hits zero.</div>
+</div>
+<div class="settings-control">
+<label class="switch">
+<input type="checkbox" id="soundToggle" onchange="toggleSound(this.checked)">
+<span class="slider"></span>
+</label>
+</div>
+</div>
+<div class="settings-row">
+<div>
+<div class="settings-label">Notifications</div>
+<div class="settings-desc" id="notifyDesc">Rest-over and workout-reminder alerts when the app is in the background.</div>
+</div>
+<div class="settings-control">
+<label class="switch">
+<input type="checkbox" id="notifyToggle" onchange="toggleNotify(this.checked)">
+<span class="slider"></span>
+</label>
+</div>
+</div>
+<div class="settings-row">
+<div>
 <div class="settings-label">Default rest time</div>
 <div class="settings-desc">Between working sets. Warmup sets have no rest.</div>
 </div>
@@ -648,6 +692,31 @@ nav button.active{color:var(--primary);border-bottom-color:var(--primary)}
 <button type="button" data-rest-val="90" onclick="setDefaultRest(90)">1:30</button>
 <button type="button" data-rest-val="120" onclick="setDefaultRest(120)">2m</button>
 <button type="button" data-rest-val="180" onclick="setDefaultRest(180)">3m</button>
+</div>
+</div>
+</div>
+<div class="settings-row">
+<div>
+<div class="settings-label">Backup</div>
+<div class="settings-desc">Export saves everything to a JSON file. Import replaces all current data with a backup file.</div>
+</div>
+<div class="settings-control" style="gap:8px">
+<button class="btn btn-ghost btn-sm" onclick="exportData()">Export</button>
+<button class="btn btn-ghost btn-sm" onclick="triggerImport()">Import</button>
+</div>
+</div>
+<input type="file" id="importFileInput" accept="application/json,.json" style="display:none" onchange="handleImportFile(event)">
+<div class="settings-row">
+<div>
+<div class="settings-label">Auto-backup</div>
+<div class="settings-desc">Downloads a backup automatically on this schedule when you open the app.</div>
+</div>
+<div class="settings-control">
+<div class="theme-seg" id="autoBackupSeg">
+<button type="button" data-autobackup-val="off" onclick="setAutoBackup('off')">Off</button>
+<button type="button" data-autobackup-val="daily" onclick="setAutoBackup('daily')">Daily</button>
+<button type="button" data-autobackup-val="weekly" onclick="setAutoBackup('weekly')">Weekly</button>
+<button type="button" data-autobackup-val="monthly" onclick="setAutoBackup('monthly')">Monthly</button>
 </div>
 </div>
 </div>
@@ -718,6 +787,20 @@ Supports a single workout <em>or</em> an array of multiple days. Optional <code 
 <div style="display:flex;gap:8px">
 <button class="btn btn-primary" style="flex:1" onclick="applyCustomAlt()">Use This</button>
 <button class="btn btn-ghost" onclick="closeAltModal()">Cancel</button>
+</div>
+</div>
+</div>
+
+<!-- EXERCISE ALTERNATIVES BROWSER (muscle-group lookup, ported from PR #19) -->
+<div id="altBrowseModal" class="modal-overlay">
+<div class="modal">
+<h2>&#8646; Exercise Alternatives</h2>
+<div class="form-group" style="margin-bottom:10px">
+<input id="altBrowseSearch" type="search" placeholder="Search exercises or muscles" oninput="altBrowseSearchInput(this.value)" autocomplete="off">
+</div>
+<div id="altBrowseBody"></div>
+<div style="display:flex;gap:8px;margin-top:14px">
+<button class="btn btn-ghost" style="flex:1" onclick="closeAltBrowse()">Close</button>
 </div>
 </div>
 </div>
@@ -862,6 +945,7 @@ var current = null;
 try { current = _savedCurrent ? JSON.parse(_savedCurrent) : null; } catch(e) { current = null; }
 
 /* Settings (new gymlog_settings key; independent of save()) */
+var AUTO_BACKUP_INTERVALS = { daily: 864e5, weekly: 6048e5, monthly: 2592e6 };
 var settings = loadSettings();
 var wakeLock = null;
 
@@ -874,6 +958,9 @@ var gymSetIdx = 0;
 var restInterval = null;
 var restRemaining = 0;
 var restTotal = 0;
+var restEndsAt = 0;      /* wall-clock end so throttled background ticks stay accurate */
+var restAlertBody = '';  /* plain-text label for the rest-end notification */
+var audioCtx = null;
 var gymPaused = false;
 var gymPauseStart = 0;
 var restPausedAt = 0;
@@ -890,15 +977,23 @@ function save() {
 }
 
 /* ── Settings ───────────────────────────────────── */
-function loadSettings() {
-  var s = {};
-  try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (e) { s = {}; }
+function normalizeSettings(s) {
+  s = (s && typeof s === 'object') ? s : {};
   return {
     theme: s.theme === 'light' ? 'light' : 'dark',
     keepAwake: s.keepAwake === true,
     defaultRest: typeof s.defaultRest === 'number' ? s.defaultRest : 90,
+    sound: s.sound !== false,   /* default on */
+    notify: s.notify === true,  /* default off — needs permission grant */
+    autoBackup: AUTO_BACKUP_INTERVALS[s.autoBackup] ? s.autoBackup : 'off',
+    lastAutoBackup: typeof s.lastAutoBackup === 'number' ? s.lastAutoBackup : 0,
     equipment: EQUIP_MODES.some(function(m) { return m[0] === s.equipment; }) ? s.equipment : 'all'
   };
+}
+function loadSettings() {
+  var s = {};
+  try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') || {}; } catch (e) { s = {}; }
+  return normalizeSettings(s);
 }
 function saveSettings() {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
@@ -948,12 +1043,107 @@ function setDefaultRest(secs) {
   syncSettingsUI();
 }
 
+/* ── Rest-end alerts: sound + background notification ── */
+/* AudioContext must be created/resumed inside a user gesture on mobile.
+   Rest always starts from a tap (set done / complete set), so prime there. */
+function primeAudio() {
+  if (!settings.sound) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch (e) { audioCtx = null; }
+}
+
+function playBeep() {
+  if (!settings.sound || !audioCtx) return;
+  try {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    var t = audioCtx.currentTime;
+    [0, 0.22].forEach(function(off) {  /* two short 880 Hz beeps */
+      var o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, t + off);
+      g.gain.exponentialRampToValueAtTime(0.35, t + off + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + off + 0.18);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t + off); o.stop(t + off + 0.2);
+    });
+  } catch (e) {}
+}
+
+/* Fire an OS notification only when the app is hidden and permission granted.
+   PWAs need the service-worker registration; plain pages fall back to new Notification. */
+function notifyBg(title, body) {
+  if (!settings.notify || document.visibilityState === 'visible') return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  var opts = { body: body, icon: 'icon-192.png', badge: 'icon-192.png', tag: 'gymlog-alert' };
+  if (navigator.serviceWorker) {
+    navigator.serviceWorker.getRegistration().then(function(reg) {
+      if (reg && reg.showNotification) reg.showNotification(title, opts);
+      else new Notification(title, opts);
+    }).catch(function() { try { new Notification(title, opts); } catch (e) {} });
+  } else {
+    try { new Notification(title, opts); } catch (e) {}
+  }
+}
+
+function restEndAlert(label) {
+  if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+  playBeep();
+  notifyBg('Rest over ⏱️', label || 'Back to work');
+}
+
+function toggleSound(on) {
+  settings.sound = !!on;
+  saveSettings();
+  if (on) primeAudio(); /* toggle tap is a gesture — unlock audio now */
+}
+
+function toggleNotify(on) {
+  if (!on) {
+    settings.notify = false;
+    saveSettings();
+    syncSettingsUI();
+    return;
+  }
+  if (!('Notification' in window)) { syncSettingsUI(); return; }
+  Notification.requestPermission().then(function(perm) {
+    settings.notify = (perm === 'granted');
+    saveSettings();
+    syncSettingsUI();
+  });
+}
+
+function setAutoBackup(freq) {
+  settings.autoBackup = AUTO_BACKUP_INTERVALS[freq] ? freq : 'off';
+  saveSettings();
+  syncSettingsUI();
+}
+
+/* Best-effort: only runs while the app is open, so a schedule is "due on next
+   open" rather than a true background timer. Skips silently if there's
+   nothing worth backing up yet. */
+function checkAutoBackup() {
+  var interval = AUTO_BACKUP_INTERVALS[settings.autoBackup];
+  if (!interval) return;
+  if (Date.now() - settings.lastAutoBackup < interval) return;
+  if (workouts.length === 0 && plans.length === 0) return;
+  exportData();
+  settings.lastAutoBackup = Date.now();
+  saveSettings();
+  showToast('Auto-backup saved — ' + backupFilename());
+}
+
 function syncSettingsUI() {
   document.querySelectorAll('#themeSeg button').forEach(function(b) {
     b.classList.toggle('active', b.getAttribute('data-theme-val') === settings.theme);
   });
   document.querySelectorAll('#restSeg button').forEach(function(b) {
     b.classList.toggle('active', parseInt(b.getAttribute('data-rest-val'), 10) === settings.defaultRest);
+  });
+  document.querySelectorAll('#autoBackupSeg button').forEach(function(b) {
+    b.classList.toggle('active', b.getAttribute('data-autobackup-val') === settings.autoBackup);
   });
   var equipSeg = document.getElementById('equipSeg');
   if (equipSeg) equipSeg.innerHTML = equipChipsHtml();
@@ -965,6 +1155,19 @@ function syncSettingsUI() {
   if (!WAKE_SUPPORTED) {
     var d = document.getElementById('wakeDesc');
     if (d) d.textContent = 'Not supported in this browser/context (needs HTTPS or localhost).';
+  }
+  var soundToggle = document.getElementById('soundToggle');
+  if (soundToggle) soundToggle.checked = settings.sound;
+  var notifToggle = document.getElementById('notifyToggle');
+  if (notifToggle) {
+    var notifSupported = ('Notification' in window);
+    notifToggle.checked = settings.notify && notifSupported && Notification.permission === 'granted';
+    notifToggle.disabled = !notifSupported || (notifSupported && Notification.permission === 'denied');
+    var nd = document.getElementById('notifyDesc');
+    if (nd) {
+      if (!notifSupported) nd.textContent = 'Not supported in this browser.';
+      else if (Notification.permission === 'denied') nd.textContent = 'Blocked — allow notifications for this site in your browser settings.';
+    }
   }
 }
 
@@ -986,7 +1189,22 @@ function startTimer() {
     if (el) el.textContent = t;
     var ge = document.getElementById('gymOverallTimer');
     if (ge) ge.textContent = t;
+    checkLongWorkout();
   }, 1000);
+}
+
+/* One-time nudge if a workout has been running 2h+ — usually means it was
+   never finished, which skews duration stats. Flag rides on the workout
+   object so it survives reloads and never repeats. */
+var LONG_WORKOUT_MS = 2 * 3600 * 1000;
+function checkLongWorkout() {
+  if (!current || current._longReminded) return;
+  if (Date.now() - current.startTime < LONG_WORKOUT_MS) return;
+  current._longReminded = true;
+  saveCurrent();
+  var msg = 'Workout has been running 2h+ — finish or discard it to keep your stats accurate.';
+  notifyBg('Still working out? 🏋️', msg);
+  showToast('⏱️ ' + msg, 6000);
 }
 
 function stopTimer() {
@@ -1173,6 +1391,7 @@ function toggleSetDone(section, ei, si) {
   var set = arr[ei] && arr[ei].sets[si];
   if (!set) return;
   set._done = !set._done;
+  if (set._done) recordRepsUsed(arr[ei].name, set.reps);
   saveCurrent();
   if (navigator.vibrate) navigator.vibrate(40);
   var gymOpen = document.getElementById('gymOverlay').classList.contains('open');
@@ -1180,7 +1399,7 @@ function toggleSetDone(section, ei, si) {
      has its own full-screen rest overlay, so skip the popup there. */
   if (set._done && !gymOpen) {
     var restSecs = arr[ei]._rest != null ? arr[ei]._rest : settings.defaultRest;
-    startRestPopup(restSecs);
+    startRestPopup(restSecs, arr[ei].name);
   } else if (!set._done && !gymOpen) {
     dismissRestPopup();
   }
@@ -1282,6 +1501,7 @@ function adjustSetWeight(sec, ei, si, delta) {
   var s = arr[ei].sets[si];
   var cur = parseFloat(s.weight) || 0;
   s.weight = String(cur + delta);
+  recordWeightDelta(delta);
   save();
   renderActive();
 }
@@ -1297,6 +1517,7 @@ function gymAdjustWeight(delta) {
   if (gymSetIdx >= sets.length) return;
   var cur = parseFloat(sets[gymSetIdx].weight) || 0;
   sets[gymSetIdx].weight = String(cur + delta);
+  recordWeightDelta(delta);
   save();
   gymRenderContent();
 }
@@ -1304,6 +1525,74 @@ function gymPromptCustomWeight() {
   var val = prompt('Adjust by how many lbs?', '5');
   var n = parseFloat(val);
   if (!isNaN(n)) gymAdjustWeight(n);
+}
+
+/* ── Adaptive quick-adjust ─────────────────────────────
+   The +5/+10/+15 defaults only help lifters who move in those steps. Every
+   increment actually used (buttons AND the +? prompt) is counted, and the
+   three most-used ones become the buttons — someone working in 2.5 lb
+   jumps sees +2.5 within a session or two. Same idea for reps: the rep
+   counts actually LOGGED (on set completion) per exercise surface as
+   one-tap chips next to the gym stepper. */
+var ADJ_KEY = 'gymlog_adjust_stats';
+var _adjStats = {};
+try { _adjStats = JSON.parse(localStorage.getItem(ADJ_KEY) || '{}') || {}; } catch (e) { _adjStats = {}; }
+if (!_adjStats.w) _adjStats.w = {};   /* weight-delta usage counts: {"2.5": 7} */
+if (!_adjStats.r) _adjStats.r = {};   /* per-exercise logged-reps counts: {"bench press": {"8": 5}} */
+
+function saveAdjStats() {
+  try { localStorage.setItem(ADJ_KEY, JSON.stringify(_adjStats)); } catch (e) {}
+}
+
+function recordWeightDelta(d) {
+  d = Math.abs(parseFloat(d));
+  if (!d || !isFinite(d) || d > 500) return;
+  var k = String(d);
+  _adjStats.w[k] = (_adjStats.w[k] || 0) + 1;
+  saveAdjStats();
+}
+
+/* Top 3 increments by use count, defaults filling the gaps, shown ascending */
+function quickWeightDeltas() {
+  var used = Object.keys(_adjStats.w)
+    .map(function(k) { return { d: parseFloat(k), n: _adjStats.w[k] }; })
+    .filter(function(x) { return x.d > 0 && isFinite(x.d); })
+    .sort(function(a, b) { return b.n - a.n || a.d - b.d; })
+    .map(function(x) { return x.d; });
+  var out = [];
+  used.concat([5, 10, 15]).forEach(function(d) {
+    if (out.length < 3 && out.indexOf(d) < 0) out.push(d);
+  });
+  return out.sort(function(a, b) { return a - b; });
+}
+
+function recordRepsUsed(name, reps) {
+  var n = parseInt(reps, 10);
+  if (!name || isNaN(n) || n <= 0 || n > 200) return;
+  var key = String(name).trim().toLowerCase();
+  var m = _adjStats.r[key] || (_adjStats.r[key] = {});
+  m[String(n)] = (m[String(n)] || 0) + 1;
+  saveAdjStats();
+}
+
+/* Up to 2 most-logged rep counts for this exercise. Needs 2+ logs so a
+   one-off doesn't pin a chip. */
+function quickRepsFor(name) {
+  var key = String(name || '').trim().toLowerCase();
+  var m = _adjStats.r[key];
+  if (!m) return [];
+  return Object.keys(m)
+    .map(function(k) { return { v: parseInt(k, 10), n: m[k] }; })
+    .filter(function(x) { return x.n >= 2; })
+    .sort(function(a, b) { return b.n - a.n || a.v - b.v; })
+    .slice(0, 2)
+    .map(function(x) { return x.v; });
+}
+
+function quickWeightBtnsHtml(onclickFor) {
+  return quickWeightDeltas().map(function(d) {
+    return '<button onclick="' + onclickFor(d) + '">+' + d + '</button>';
+  }).join('');
 }
 
 /* The set currently on screen in gym mode, or null if there isn't one. */
@@ -1348,6 +1637,16 @@ function gymSetRpe(v) {
   var set = gymCurrentSet();
   if (!set) return;
   set.rpe = (String(set.rpe) === String(v)) ? '' : String(v);
+  saveCurrent();
+  gymRenderContent();
+}
+
+/* One-tap rep entry from the learned quick-chips (see quickRepsFor). */
+function gymSetReps(v) {
+  var set = gymCurrentSet();
+  if (!set) return;
+  set.reps = (String(set.reps) === String(v)) ? '' : String(v);
+  delete set._est;
   saveCurrent();
   gymRenderContent();
 }
@@ -1624,9 +1923,7 @@ function renderExerciseBlock(ex, ei, section, isWarmup) {
         '<button class="remove-set" onclick="removeSet(\'' + sec + '\',' + ei + ',' + si + ')">&#10005;</button>' +
         '</div>' +
         '<div class="weight-adj">' +
-        '<button onclick="adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',5)">+5</button>' +
-        '<button onclick="adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',10)">+10</button>' +
-        '<button onclick="adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',15)">+15</button>' +
+        quickWeightBtnsHtml(function(d) { return 'adjustSetWeight(\'' + sec + '\',' + ei + ',' + si + ',' + d + ')'; }) +
         '<button onclick="promptCustomWeight(\'' + sec + '\',' + ei + ',' + si + ')">+?</button>' +
         '</div>';
     }
@@ -2053,15 +2350,20 @@ function renderAltModal() {
   _altShown = list.map(function(e) { return e[0]; });
   var html = list.map(function(e, i) {
     return '<li><button class="alt-item" onclick="applyAltIdx(' + i + ')">' +
-      '<span class="alt-name">' + esc(e[0]) + '</span>' +
+      '<span class="alt-thumb-wrap">&#127947;&#65039;<img id="swap-th-' + i + '" class="alt-thumb" alt=""></span>' +
+      '<span class="alt-name" style="flex:1">' + esc(e[0]) + '</span>' +
       '<span class="alt-eq">' + esc(EQUIP_LABELS[e[1]] || e[1]) + '</span></button></li>';
   }).join('');
   if (ex._swappedFrom) {
     html = '<li><button class="alt-item revert" onclick="revertAlt()">' +
-      '<span class="alt-name">&#8617; ' + esc(ex._swappedFrom) + '</span>' +
+      '<span class="alt-thumb-wrap">&#127947;&#65039;<img id="swap-th-orig" class="alt-thumb" alt=""></span>' +
+      '<span class="alt-name" style="flex:1">&#8617; ' + esc(ex._swappedFrom) + '</span>' +
       '<span class="alt-eq">Original</span></button></li>' + html;
   }
   document.getElementById('altList').innerHTML = html;
+  /* Inline demos: reuse the warmup image pipeline (wger.de + SW cache) */
+  _altShown.forEach(function(n, i) { loadExerciseImage(n, 'swap-th-' + i); });
+  if (ex._swappedFrom) loadExerciseImage(ex._swappedFrom, 'swap-th-orig');
 }
 
 function applyAltIdx(i) { applyAlt(_altShown[i]); }
@@ -2140,6 +2442,190 @@ function applyAlt(newName) {
   showToast((backToOrigin ? 'Back to ' : 'Swapped to ') + newName + ' ✔️');
 }
 
+/* ── Muscle-group browser (standalone lookup, ported from PR #19) ──
+   Two entry modes: 'info' (home screen — look around, tap opens a how-to
+   video) and 'fill' (Add Exercise modal — tap drops the name into the
+   input). Browsing reuses ALT_CATALOG/PATTERN_LABELS and the shared
+   equipment preference. */
+var ALT_CATS = ['Chest', 'Back', 'Shoulders', 'Arms', 'Legs', 'Core', 'Mobility & Activation'];
+var PATTERN_META = {
+  'push-h':       { cat: 'Chest',                 muscles: 'Chest · Front Delts · Triceps' },
+  'push-i':       { cat: 'Chest',                 muscles: 'Upper Chest · Front Delts · Triceps' },
+  'fly':          { cat: 'Chest',                 muscles: 'Chest (stretch + squeeze)' },
+  'pull-h':       { cat: 'Back',                  muscles: 'Mid Back · Lats · Rear Delts · Biceps' },
+  'pull-v':       { cat: 'Back',                  muscles: 'Lats · Biceps · Mid Back' },
+  'traps':        { cat: 'Back',                  muscles: 'Upper Traps · Grip' },
+  'push-v':       { cat: 'Shoulders',             muscles: 'Front Delts · Triceps · Upper Chest' },
+  'delt-lat':     { cat: 'Shoulders',             muscles: 'Side Delts' },
+  'delt-rear':    { cat: 'Shoulders',             muscles: 'Rear Delts · Traps · Rotator Cuff' },
+  'biceps':       { cat: 'Arms',                  muscles: 'Biceps · Forearms' },
+  'triceps':      { cat: 'Arms',                  muscles: 'Triceps' },
+  'squat':        { cat: 'Legs',                  muscles: 'Quads · Glutes · Adductors' },
+  'lunge':        { cat: 'Legs',                  muscles: 'Quads · Glutes · Balance' },
+  'hinge':        { cat: 'Legs',                  muscles: 'Hamstrings · Glutes · Lower Back' },
+  'glute':        { cat: 'Legs',                  muscles: 'Glutes · Hamstrings' },
+  'quad':         { cat: 'Legs',                  muscles: 'Quads' },
+  'ham':          { cat: 'Legs',                  muscles: 'Hamstrings' },
+  'calf':         { cat: 'Legs',                  muscles: 'Calves (gastroc + soleus)' },
+  'core':         { cat: 'Core',                  muscles: 'Abs · Obliques · Deep Core' },
+  'mob-hip':      { cat: 'Mobility & Activation', muscles: 'Hip Flexors · Hips · Adductors' },
+  'mob-tspine':   { cat: 'Mobility & Activation', muscles: 'Thoracic Spine · Posture' },
+  'mob-shoulder': { cat: 'Mobility & Activation', muscles: 'Shoulders · Rotator Cuff' },
+  'act-cuff':     { cat: 'Mobility & Activation', muscles: 'Rotator Cuff' },
+  'act-scap':     { cat: 'Mobility & Activation', muscles: 'Lower Traps · Scapular Control' },
+  'act-glute':    { cat: 'Mobility & Activation', muscles: 'Glutes · Glute Medius' }
+};
+
+function altVidUrl(name) {
+  return 'https://www.youtube.com/results?search_query=' + encodeURIComponent(name + ' exercise how to');
+}
+
+var _altBrowse = null;   /* {mode:'info'|'fill', pattern:null|id, query:''} */
+
+function openAltBrowse(mode) {
+  _altBrowse = { mode: mode === 'fill' ? 'fill' : 'info', pattern: null, query: '' };
+  var el = document.getElementById('altBrowseSearch');
+  if (el) el.value = '';
+  renderAltBrowse();
+  document.getElementById('altBrowseModal').classList.add('open');
+}
+
+function closeAltBrowse() {
+  document.getElementById('altBrowseModal').classList.remove('open');
+  _altBrowse = null;
+}
+
+function altBrowseSearchInput(v) {
+  if (!_altBrowse) return;
+  _altBrowse.query = v;
+  renderAltBrowse();
+}
+
+function altBrowseSetEquip(eq) {
+  settings.equipment = eq;
+  saveSettings();
+  var seg = document.getElementById('equipSeg');
+  if (seg) seg.innerHTML = equipChipsHtml();
+  renderAltBrowse();
+}
+
+function altBrowseChipsHtml() {
+  return '<div class="alt-chips">' + EQUIP_MODES.map(function(m) {
+    return '<button type="button" class="alt-chip' + (settings.equipment === m[0] ? ' active' : '') +
+      '" onclick="altBrowseSetEquip(\'' + m[0] + '\')">' + m[1] + '</button>';
+  }).join('') + '</div>';
+}
+
+function altBrowseShowPattern(pat) {
+  if (!_altBrowse) return;
+  _altBrowse.pattern = pat;
+  _altBrowse.query = '';
+  var el = document.getElementById('altBrowseSearch');
+  if (el) el.value = '';
+  renderAltBrowse();
+}
+
+function altBrowseBack() {
+  if (!_altBrowse) return;
+  _altBrowse.pattern = null;
+  renderAltBrowse();
+}
+
+/* _altBrowseShown mirrors _altShown: names indexed by the row buttons */
+var _altBrowseShown = [];
+
+function altBrowsePick(i) {
+  var name = _altBrowseShown[i];
+  if (!name || !_altBrowse) return;
+  if (_altBrowse.mode === 'fill') {
+    var input = document.getElementById('exerciseName');
+    if (input) input.value = name;
+    closeAltBrowse();
+    showToast('Picked ' + name + ' — tap Add');
+    return;
+  }
+  window.open(altVidUrl(name), '_blank', 'noopener');
+}
+
+function altBrowseItemRow(entry, i, showPattern) {
+  var meta = showPattern ? (PATTERN_LABELS[entry[2]] || '') : '';
+  return '<li class="alt-item">' +
+    '<span class="alt-thumb-wrap">&#127947;&#65039;<img id="alt-th-' + i + '" class="alt-thumb" alt=""></span>' +
+    '<button class="alt-tap" onclick="altBrowsePick(' + i + ')">' +
+    '<div class="alt-name">' + esc(entry[0]) + '</div>' +
+    (meta ? '<div class="alt-meta">' + esc(meta) + '</div>' : '') + '</button>' +
+    '<span class="alt-eq">' + esc(EQUIP_LABELS[entry[1]] || entry[1]) + '</span>' +
+    '<a class="alt-vid" href="' + altVidUrl(entry[0]) + '" target="_blank" rel="noopener" title="How-to video" aria-label="How-to video">&#9654;</a></li>';
+}
+
+function altBrowsePatternRows(pats) {
+  return '<ul class="alt-list">' + pats.map(function(p) {
+    var n = ALT_CATALOG.filter(function(e) { return e[2] === p; }).length;
+    return '<li class="alt-item"><button class="alt-tap" onclick="altBrowseShowPattern(\'' + p + '\')">' +
+      '<div class="alt-name">' + esc(PATTERN_LABELS[p] || p) + '</div>' +
+      '<div class="alt-meta">' + esc(PATTERN_META[p] ? PATTERN_META[p].muscles : '') + '</div></button>' +
+      '<span class="alt-eq">' + n + '</span></li>';
+  }).join('') + '</ul>';
+}
+
+function renderAltBrowse() {
+  if (!_altBrowse) return;
+  var body = document.getElementById('altBrowseBody');
+  var q = altNorm(_altBrowse.query);
+  var eq = settings.equipment;
+  var html = '';
+  _altBrowseShown = [];
+
+  if (q) {
+    /* Free-text search across names, pattern labels, muscles and category */
+    html += altBrowseChipsHtml();
+    var hits = ALT_CATALOG.filter(function(e) {
+      if (eq !== 'all' && e[1] !== eq) return false;
+      var meta = PATTERN_META[e[2]] || {};
+      var txt = altNorm(e[0] + ' ' + (PATTERN_LABELS[e[2]] || '') + ' ' + (meta.muscles || '') + ' ' + (meta.cat || ''));
+      return txt.indexOf(q) >= 0;
+    }).slice(0, 60);
+    if (!hits.length) {
+      html += '<div class="alt-empty">Nothing matches &ldquo;' + esc(_altBrowse.query) + '&rdquo;' +
+        (eq !== 'all' ? ' with that equipment' : '') + '.</div>';
+    } else {
+      _altBrowseShown = hits.map(function(e) { return e[0]; });
+      html += '<ul class="alt-list">' + hits.map(function(e, i) {
+        return altBrowseItemRow(e, i, true);
+      }).join('') + '</ul>';
+    }
+  } else if (_altBrowse.pattern) {
+    var pat = _altBrowse.pattern;
+    var meta = PATTERN_META[pat] || {};
+    html += altBrowseChipsHtml();
+    html += '<div class="alt-group-label">' + esc(PATTERN_LABELS[pat] || pat) +
+      (meta.muscles ? ' &middot; ' + esc(meta.muscles) : '') + '</div>';
+    var all = ALT_CATALOG.filter(function(e) { return e[2] === pat; });
+    var list = eq === 'all' ? all : all.filter(function(e) { return e[1] === eq; });
+    if (!list.length && all.length) {
+      list = all;   /* filter came up empty — better to show everything than nothing */
+      html += '<div class="alt-note">No ' + esc(EQUIP_LABELS[eq] || eq) + ' option for this pattern &mdash; showing all.</div>';
+    }
+    _altBrowseShown = list.map(function(e) { return e[0]; });
+    html += '<ul class="alt-list">' + list.map(function(e, i) {
+      return altBrowseItemRow(e, i, false);
+    }).join('') + '</ul>';
+    html += '<button class="alt-link" onclick="altBrowseBack()">&larr; All muscle groups</button>';
+  } else {
+    html += '<div class="alt-empty">' +
+      (_altBrowse.mode === 'fill' ? 'Pick a movement to drop into Add Exercise.' : 'Pick the muscle group you want to train.') +
+      '</div>';
+    ALT_CATS.forEach(function(cat) {
+      var pats = Object.keys(PATTERN_META).filter(function(p) { return PATTERN_META[p].cat === cat; });
+      if (!pats.length) return;
+      html += '<div class="alt-group-label">' + esc(cat) + '</div>' + altBrowsePatternRows(pats);
+    });
+  }
+  body.innerHTML = html;
+  /* Inline demos: reuse the warmup image pipeline (wger.de + SW cache) */
+  _altBrowseShown.forEach(function(n, i) { loadExerciseImage(n, 'alt-th-' + i); });
+}
+
 /* ══════════════════════════════════════════════════
    GYM MODE
    ══════════════════════════════════════════════════ */
@@ -2191,17 +2677,18 @@ function gymTogglePause() {
     startTimer();
     if (restPausedAt > 0) {
       restRemaining = restPausedAt;
+      restEndsAt = Date.now() + restPausedAt * 1000;
       restPausedAt = 0;
       if (restInterval) clearInterval(restInterval);
       restInterval = setInterval(function() {
-        restRemaining--;
+        restRemaining = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
         var timeEl = document.getElementById('gymRestTime');
         var barEl = document.getElementById('gymRestBar');
         if (timeEl) timeEl.textContent = pad(Math.floor(restRemaining / 60)) + ':' + pad(restRemaining % 60);
         if (barEl) barEl.style.width = (restRemaining / restTotal * 100) + '%';
         if (restRemaining <= 0) {
           gymSkipRest();
-          if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+          restEndAlert(restAlertBody);
           gymRenderContent();
         }
       }, 1000);
@@ -2268,13 +2755,13 @@ function gymRenderContent() {
     '</div>' +
     '<button class="gym-alt-btn" onclick="openAltModal(\'' + item.sec + '\',' + item.ei + ',true)">&#8644; SWAP EXERCISE</button>';
 
-  if (item.isWarmup) {
-    html +=
-      '<div class="gym-warmup-img-wrap">' +
-      '<div class="gym-warmup-img-placeholder">&#127939;</div>' +
-      '<img id="' + gymImgId + '" class="gym-warmup-img" src="" alt="' + esc(ex.name) + '">' +
-      '</div>';
-  }
+  /* Demo image for EVERY exercise — warmups get the big frame, working sets a
+     compact one so the logging controls stay above the fold. */
+  html +=
+    '<div class="gym-warmup-img-wrap' + (item.isWarmup ? '' : ' compact') + '">' +
+    '<div class="gym-warmup-img-placeholder">' + (item.isWarmup ? '&#127939;' : '&#127947;&#65039;') + '</div>' +
+    '<img id="' + gymImgId + '" class="gym-warmup-img" src="" alt="' + esc(ex.name) + '">' +
+    '</div>';
 
   html +=
     '<div class="gym-set-counter">' + (gymSetIdx + 1) + '</div>' +
@@ -2298,9 +2785,7 @@ function gymRenderContent() {
       '<div class="gym-log-group">' +
       '<div class="gym-log-caption">Weight</div>' +
       '<div class="gym-weight-adj">' +
-      '<button onclick="gymAdjustWeight(5)">+5</button>' +
-      '<button onclick="gymAdjustWeight(10)">+10</button>' +
-      '<button onclick="gymAdjustWeight(15)">+15</button>' +
+      quickWeightBtnsHtml(function(d) { return 'gymAdjustWeight(' + d + ')'; }) +
       '<button onclick="gymPromptCustomWeight()">+?</button>' +
       '</div></div>' +
       '<div class="gym-log-group">' +
@@ -2310,7 +2795,17 @@ function gymRenderContent() {
       '<button class="gym-stepper-val" onclick="gymPromptReps()" aria-label="Type reps">' +
       esc(currentSet.reps || '\u2014') + '</button>' +
       '<button onclick="gymAdjustReps(1)" aria-label="One rep more">+</button>' +
-      '</div></div>' +
+      '</div>' +
+      (function() {
+        var quick = quickRepsFor(ex.name);
+        if (!quick.length) return '';
+        return '<div class="gym-rpe-chips gym-reps-quick">' + quick.map(function(v) {
+          var on = String(currentSet.reps) === String(v);
+          return '<button class="' + (on ? 'active' : '') + '" onclick="gymSetReps(' + v + ')"' +
+            ' aria-pressed="' + (on ? 'true' : 'false') + '">' + v + '</button>';
+        }).join('') + '</div>';
+      })() +
+      '</div>' +
       '<div class="gym-log-group">' +
       '<div class="gym-log-caption">RPE</div>' +
       '<div class="gym-rpe-chips">' +
@@ -2340,7 +2835,7 @@ function gymRenderContent() {
     '</div>';
 
   document.getElementById('gymContent').innerHTML = html;
-  if (item.isWarmup) loadExerciseImage(ex.name, gymImgId);
+  loadExerciseImage(ex.name, gymImgId);
 
   /* Set pips */
   var pipsHtml = sets.map(function(s, si) {
@@ -2357,6 +2852,7 @@ function gymMarkSetDone() {
   if (gymSetIdx >= sets.length) return;
 
   sets[gymSetIdx]._done = true;
+  recordRepsUsed(exs[gymExIdx].ex.name, sets[gymSetIdx].reps);
   save();
 
   /* Find next incomplete set in this exercise */
@@ -2414,13 +2910,18 @@ function gymGoPrev() {
 function gymStartRest(secs, exs, curExIdx, nextSetIdx) {
   restTotal = secs;
   restRemaining = secs;
+  restEndsAt = Date.now() + secs * 1000;
+  primeAudio(); /* rest starts from a tap — unlock audio while we have the gesture */
 
-  /* "Up next" label */
+  /* "Up next" label (plain copy kept for the notification body) */
   var nextLabel = '';
+  restAlertBody = 'Back to work';
   if (nextSetIdx >= 0) {
     nextLabel = 'Next: Set ' + (nextSetIdx + 1) + ' — ' + esc(exs[curExIdx].ex.name);
+    restAlertBody = exs[curExIdx].ex.name + ', set ' + (nextSetIdx + 1);
   } else if (curExIdx + 1 < exs.length) {
     nextLabel = 'Next exercise: ' + esc(exs[curExIdx + 1].ex.name);
+    restAlertBody = 'Next exercise: ' + exs[curExIdx + 1].ex.name;
   }
   document.getElementById('gymRestNext').innerHTML = nextLabel ? 'Up next: <strong>' + nextLabel + '</strong>' : '';
 
@@ -2435,14 +2936,16 @@ function gymStartRest(secs, exs, curExIdx, nextSetIdx) {
 
   if (restInterval) clearInterval(restInterval);
   restInterval = setInterval(function() {
-    restRemaining--;
+    /* Wall-clock, not tick-count: background throttling can starve the interval,
+       so a late tick must still land the alert on time. */
+    restRemaining = Math.max(0, Math.ceil((restEndsAt - Date.now()) / 1000));
     var timeEl = document.getElementById('gymRestTime');
     var barEl = document.getElementById('gymRestBar');
     if (timeEl) timeEl.textContent = pad(Math.floor(restRemaining / 60)) + ':' + pad(restRemaining % 60);
     if (barEl) barEl.style.width = (restRemaining / restTotal * 100) + '%';
     if (restRemaining <= 0) {
       gymSkipRest();
-      if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+      restEndAlert(restAlertBody);
       gymRenderContent();
     }
   }, 1000);
@@ -2460,12 +2963,17 @@ function gymSkipRest() {
 var restPopupInterval = null;
 var restPopupRemaining = 0;
 var restPopupTotal = 0;
+var restPopupEndsAt = 0;
+var restPopupAlertBody = '';
 
-function startRestPopup(secs) {
+function startRestPopup(secs, exName) {
   secs = parseInt(secs, 10);
   if (!secs || secs <= 0) { dismissRestPopup(); return; }
+  primeAudio(); /* called from the set-done tap — unlock audio in the gesture */
   restPopupTotal = secs;
   restPopupRemaining = secs;
+  restPopupEndsAt = Date.now() + secs * 1000;
+  restPopupAlertBody = exName ? 'Next set — ' + exName : 'Back to work';
   var popup = document.getElementById('restPopup');
   var timeEl = document.getElementById('restPopupTime');
   var barEl = document.getElementById('restPopupBar');
@@ -2477,14 +2985,14 @@ function startRestPopup(secs) {
   barEl.style.transition = 'width 1s linear';
   if (restPopupInterval) clearInterval(restPopupInterval);
   restPopupInterval = setInterval(function() {
-    restPopupRemaining--;
+    restPopupRemaining = Math.max(0, Math.ceil((restPopupEndsAt - Date.now()) / 1000));
     var t = document.getElementById('restPopupTime');
     var b = document.getElementById('restPopupBar');
     if (t) t.textContent = pad(Math.floor(restPopupRemaining / 60)) + ':' + pad(restPopupRemaining % 60);
     if (b) b.style.width = (restPopupRemaining / restPopupTotal * 100) + '%';
     if (restPopupRemaining <= 0) {
       dismissRestPopup();
-      if (navigator.vibrate) navigator.vibrate([200, 80, 200, 80, 400]);
+      restEndAlert(restPopupAlertBody);
     }
   }, 1000);
 }
@@ -2493,6 +3001,7 @@ function restPopupAdd(secs) {
   if (!restPopupInterval) return;
   restPopupRemaining += secs;
   restPopupTotal += secs;
+  restPopupEndsAt += secs * 1000;
   var t = document.getElementById('restPopupTime');
   var b = document.getElementById('restPopupBar');
   if (t) t.textContent = pad(Math.floor(restPopupRemaining / 60)) + ':' + pad(restPopupRemaining % 60);
@@ -2598,13 +3107,74 @@ function renderStats() {
   c.innerHTML = html;
 }
 
-/* ── Export ─────────────────────────────────────── */
+/* ── Export / Import (Backup) ──────────────────────── */
+function buildBackupPayload() {
+  return {
+    _gymlogBackup: true,
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    workouts: workouts,
+    exercises: knownExercises,
+    plans: plans,
+    settings: settings,
+    current: current
+  };
+}
+function backupFilename() {
+  return 'gymlog-' + new Date().toISOString().slice(0, 10) + '.json';
+}
 function exportData() {
-  var blob = new Blob([JSON.stringify(workouts, null, 2)], { type: 'application/json' });
+  var blob = new Blob([JSON.stringify(buildBackupPayload(), null, 2)], { type: 'application/json' });
   var a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'gymlog-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.download = backupFilename();
   a.click();
+}
+
+function triggerImport() {
+  document.getElementById('importFileInput').click();
+}
+
+function handleImportFile(event) {
+  var input = event.target;
+  var file = input.files && input.files[0];
+  input.value = ''; /* allow re-selecting the same file later */
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function() {
+    var data;
+    try { data = JSON.parse(reader.result); } catch (e) {
+      alert('Invalid backup file: ' + e.message);
+      return;
+    }
+    /* Older exports (pre-backup-bundle) were a bare workouts array */
+    if (Array.isArray(data)) data = { workouts: data };
+    if (!data || typeof data !== 'object' || !Array.isArray(data.workouts)) {
+      alert("This doesn't look like a GymLog backup file.");
+      return;
+    }
+    var exercises = Array.isArray(data.exercises) ? data.exercises : [];
+    var importedPlans = Array.isArray(data.plans) ? data.plans : [];
+    var msg = 'This will replace ' + data.workouts.length + ' workout' + (data.workouts.length !== 1 ? 's' : '') +
+      ', ' + exercises.length + ' exercise' + (exercises.length !== 1 ? 's' : '') +
+      ', ' + importedPlans.length + ' plan' + (importedPlans.length !== 1 ? 's' : '') + ' — continue?';
+    if (!confirm(msg)) return;
+
+    localStorage.setItem(DB_KEY, JSON.stringify(data.workouts));
+    localStorage.setItem(EXERCISES_KEY, JSON.stringify(exercises));
+    localStorage.setItem(PLANS_KEY, JSON.stringify(importedPlans));
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalizeSettings(data.settings)));
+    if (data.current && typeof data.current === 'object') {
+      localStorage.setItem(CURRENT_KEY, JSON.stringify(data.current));
+    } else {
+      localStorage.removeItem(CURRENT_KEY);
+    }
+    location.reload();
+  };
+  reader.onerror = function() {
+    alert('Could not read the file.');
+  };
+  reader.readAsText(file);
 }
 
 /* ── Saved Plans ────────────────────────────────── */
@@ -2638,6 +3208,36 @@ function deletePlan(id) {
   plans = plans.filter(function(p) { return p.id !== id; });
   save();
   renderHomePlans();
+}
+
+/* Share a single saved plan as JSON — the same shape "Paste from AI" accepts,
+   so the recipient can paste or import it straight back into their own GymLog. */
+function sharePlan(id) {
+  var plan = plans.find(function(p) { return p.id === id; });
+  if (!plan) return;
+  var text = JSON.stringify(plan.data, null, 2);
+  var filename = (plan.name || 'gymlog-plan').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '.json';
+  var blob = new Blob([text], { type: 'application/json' });
+  var file = null;
+  try { file = new File([blob], filename, { type: 'application/json' }); } catch (e) { file = null; }
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: plan.name || 'GymLog Plan' }).catch(function(e) {
+      if (e && e.name !== 'AbortError') copyPlanText(text);
+    });
+  } else if (navigator.share) {
+    navigator.share({ title: plan.name || 'GymLog Plan', text: text }).catch(function() {});
+  } else {
+    copyPlanText(text);
+  }
+}
+function copyPlanText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(function() { showToast('Plan copied to clipboard!'); })
+      .catch(function() { showToast('Share not supported on this browser'); });
+  } else {
+    showToast('Share not supported on this browser');
+  }
 }
 
 function loadPlan(id) {
@@ -2744,6 +3344,7 @@ function renderHomePlans() {
       (meta ? '<div class="plan-meta">' + meta + '</div>' : '') + '</div>' +
       '<div class="plan-actions">' +
       '<button class="btn btn-primary btn-sm" onclick="loadPlan(' + p.id + ')">Load</button>' +
+      '<button class="btn btn-ghost btn-sm" onclick="sharePlan(' + p.id + ')">Share</button>' +
       '<button class="btn btn-ghost btn-sm" style="border-color:var(--danger);color:var(--danger)" onclick="deletePlan(' + p.id + ')">&#128465;</button>' +
       '</div></div>';
   }).join('');
@@ -2982,6 +3583,9 @@ if (current) {
 
 renderActive();
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function() {});
+
+/* Give the recovery toast above room to show first before an auto-backup toast can fire */
+setTimeout(checkAutoBackup, current ? 5000 : 1500);
 </script>
 </body>
 </html>
